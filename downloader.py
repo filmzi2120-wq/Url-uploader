@@ -100,14 +100,13 @@ class Downloader:
             # Check if it's a magnet link or torrent file
             if magnet_or_torrent.startswith('magnet:'):
                 params = lt.parse_magnet_uri(magnet_or_torrent)
+                # Use attribute assignment, not dictionary assignment
+                params.save_path = self.download_dir
             else:
                 # Assume it's a torrent file path
-                params = {
-                    'ti': lt.torrent_info(magnet_or_torrent),
-                    'save_path': self.download_dir
-                }
-            
-            params['save_path'] = self.download_dir
+                params = lt.add_torrent_params()
+                params.ti = lt.torrent_info(magnet_or_torrent)
+                params.save_path = self.download_dir
             
             # Add torrent to session
             handle = self.torrent_session.add_torrent(params)

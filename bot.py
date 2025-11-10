@@ -7,6 +7,7 @@ from database import db
 from downloader import downloader
 from helpers import Progress, humanbytes, is_url
 import time
+import re
 
 # Initialize bot
 app = Client(
@@ -18,6 +19,14 @@ app = Client(
 
 # User settings storage (in memory)
 user_settings = {}
+
+def is_magnet_link(text):
+    """Check if text is a magnet link"""
+    return text.strip().startswith('magnet:?')
+
+def is_torrent_url(text):
+    """Check if text is a torrent file URL"""
+    return text.strip().lower().endswith('.torrent')
 
 # Start command
 @app.on_message(filters.command("start"))
@@ -35,16 +44,17 @@ async def start_command(client, message: Message):
         "I'm a powerful URL uploader bot that can:\n"
         "• Download files from any URL\n"
         "• Download videos from YouTube, Instagram, etc.\n"
+        "• Download torrents via magnet links 🧲\n"
         "• Upload files up to 4GB to Telegram\n"
         "• Show progress with speed and ETA\n\n"
         "**How to use:**\n"
-        "Just send me any URL and I'll download and upload it for you!\n\n"
+        "Just send me any URL, magnet link, or torrent file and I'll download and upload it for you!\n\n"
         "**Commands:**\n"
         "/help - Show help message\n"
         "/about - About this bot\n"
         "/settings - Configure caption, filename, thumbnail\n"
         "/status - Check your stats\n\n"
-        "Send a URL to get started! 🚀"
+        "Send a URL or magnet link to get started! 🚀"
     )
     
     keyboard = InlineKeyboardMarkup([
@@ -63,7 +73,13 @@ async def help_command(client, message: Message):
         "**Basic Usage:**\n"
         "• Send any HTTP/HTTPS URL to download\n"
         "• Send YouTube, Instagram, TikTok URLs\n"
+        "• Send magnet links (magnet:?xt=...)\n"
+        "• Send .torrent file URLs\n"
         "• I'll download and upload to Telegram\n\n"
+        "**Torrent Downloads:**\n"
+        "• Magnet links are supported 🧲\n"
+        "• Shows peers, download speed\n"
+        "• Works with any torrent tracker\n\n"
         "**Settings:**\n"
         "Use /settings to customize:\n"
         "• Custom filename\n"
@@ -79,8 +95,9 @@ async def help_command(client, message: Message):
         "/broadcast - Send message to all users (owner only)\n\n"
         "**Limits:**\n"
         "• Max file size: 4GB\n"
-        "• Speed: 10 MB/s\n"
-        "• Format: Any file type supported"
+        "• Speed: 10 MB/s (HTTP)\n"
+        "• Format: Any file type supported\n\n"
+        "⚠️ **Note:** Only download legal torrents you have rights to!"
     )
     await message.reply_text(text)
 
@@ -89,12 +106,13 @@ async def help_command(client, message: Message):
 async def about_command(client, message: Message):
     text = (
         "ℹ️ **About URL Uploader Bot**\n\n"
-        "**Version:** 2.0\n"
+        "**Version:** 2.1 (Torrent Support)\n"
         "**Developer:** @YourUsername\n\n"
         "**Features:**\n"
         "✅ Direct URL downloads\n"
         "✅ YouTube video downloads\n"
         "✅ Instagram, TikTok support\n"
+        "✅ Torrent downloads (Magnet links) 🧲\n"
         "✅ Progress tracking\n"
         "✅ Custom thumbnails\n"
         "✅ Speed limiting (10 MB/s)\n"
@@ -103,6 +121,7 @@ async def about_command(client, message: Message):
         "• Pyrogram for Telegram API\n"
         "• yt-dlp for video downloads\n"
         "• aiohttp for HTTP downloads\n"
+        "• libtorrent for torrent downloads\n"
         "• MongoDB for data storage\n\n"
         "Made with ❤️ for the community!"
     )
@@ -141,7 +160,8 @@ async def total_command(client, message: Message):
         f"**Total Uploads:** {stats['total_uploads']}\n\n"
         f"**Server Status:** ✅ Online\n"
         f"**Speed Limit:** 10 MB/s\n"
-        f"**Max File Size:** 4 GB"
+        f"**Max File Size:** 4 GB\n"
+        f"**Torrent Support:** ✅ Enabled"
     )
     
     await message.reply_text(text)
@@ -249,19 +269,26 @@ async def handle_thumbnail(client, message: Message):
     
     await message.reply_text("✅ Thumbnail set successfully!")
 
-# Main URL handler
+# Main URL/Magnet handler
 @app.on_message(filters.text & filters.private)
 async def handle_url(client, message: Message):
     url = message.text.strip()
     
-    if not is_url(url):
+    # Check if it's a URL, magnet link, or torrent
+    if not (is_url(url) or is_magnet_link(url) or is_torrent_url(url)):
         return
     
     user_id = message.from_user.id
     await db.add_user(user_id, message.from_user.username, message.from_user.first_name)
     
+    # Detect type
+    download_type = "torrent" if (is_magnet_link(url) or is_torrent_url(url)) else "url"
+    
     # Initial message
-    status_msg = await message.reply_text("🔄 **Processing your request...**")
+    if download_type == "torrent":
+        status_msg = await message.reply_text("🧲 **Processing torrent...**\nThis may take a moment to connect to peers...")
+    else:
+        status_msg = await message.reply_text("🔄 **Processing your request...**")
     
     try:
         # Download file
@@ -274,16 +301,29 @@ async def handle_url(client, message: Message):
         
         # Update stats
         await db.update_stats(user_id, download=True)
-        await db.log_action(user_id, "download", url)
+        await db.log_action(user_id, f"download_{download_type}", url)
         
         # Get file size
         file_size = os.path.getsize(filepath)
+        
+        # Check if file exceeds Telegram limit
+        if file_size > Config.MAX_FILE_SIZE:
+            await status_msg.edit_text(
+                f"❌ **Error:** File size ({humanbytes(file_size)}) exceeds 4GB limit!\n"
+                "Please try a smaller file."
+            )
+            downloader.cleanup(filepath)
+            return
         
         # Get user settings
         settings = user_settings.get(user_id, {})
         custom_filename = settings.get('filename')
         custom_caption = settings.get('caption', f"📁 **File:** {os.path.basename(filepath)}\n💾 **Size:** {humanbytes(file_size)}")
         thumbnail = settings.get('thumbnail')
+        
+        # Add torrent emoji to caption if it's a torrent download
+        if download_type == "torrent":
+            custom_caption = f"🧲 {custom_caption}"
         
         # Rename if custom filename provided
         if custom_filename:
@@ -315,14 +355,19 @@ async def handle_url(client, message: Message):
         
         # Log to channel
         try:
-            await client.send_message(
-                Config.LOG_CHANNEL,
+            log_text = (
                 f"📤 **New Upload**\n\n"
                 f"**User:** {message.from_user.mention}\n"
                 f"**File:** {os.path.basename(filepath)}\n"
                 f"**Size:** {humanbytes(file_size)}\n"
-                f"**URL:** `{url}`"
+                f"**Type:** {download_type.upper()}\n"
             )
+            if download_type == "torrent":
+                log_text += f"**Magnet:** `{url[:100]}...`"
+            else:
+                log_text += f"**URL:** `{url}`"
+                
+            await client.send_message(Config.LOG_CHANNEL, log_text)
         except Exception:
             pass
         
@@ -352,4 +397,5 @@ async def callback_handler(client, callback_query):
 # Run bot
 if __name__ == "__main__":
     print("🤖 Bot starting...")
+    print("✅ Torrent support enabled")
     app.run()

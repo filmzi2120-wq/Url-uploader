@@ -400,78 +400,30 @@ async def handle_url(client, message: Message):
                 os.rename(filepath, new_path)
                 filepath = new_path
             except Exception as e:
-                # Keep original if rename fails
                 pass
         
-        # Upload to Telegram
-        await status_msg.edit_text("⬆️ **Uploading to Telegram...**")
+        # Ask user how to upload (Document or Video)
+        buttons = [
+            [InlineKeyboardButton("📄 Document", callback_data=f"upload_doc:{user_id}")],
+            [InlineKeyboardButton("🎬 Video", callback_data=f"upload_vid:{user_id}")]
+        ]
         
-        # Create upload progress tracker
-        upload_progress = Progress(client, status_msg)
+        await status_msg.edit_text(
+            "⚡ **Download complete!**\n\n"
+            "Choose how you want to upload the file:",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
         
-        # Determine file type and send accordingly
-        file_ext = get_file_extension(filepath).lower()
-        video_exts = ['.mp4', '.mkv', '.avi', '.mov', '.flv', '.wmv', '.webm']
-        
-        if file_ext in video_exts:
-            # Send as video
-            await client.send_video(
-                chat_id=message.chat.id,
-                video=filepath,
-                caption=custom_caption,
-                thumb=thumbnail,
-                progress=upload_progress.progress_callback,
-                progress_args=("Uploading",),
-                supports_streaming=True
-            )
-        else:
-            # Send as document
-            await client.send_document(
-                chat_id=message.chat.id,
-                document=filepath,
-                caption=custom_caption,
-                thumb=thumbnail,
-                progress=upload_progress.progress_callback,
-                progress_args=("Uploading",)
-            )
-        
-        # Update stats
-        await db.update_stats(user_id, upload=True)
-        await db.log_action(user_id, "upload", filepath)
-        
-        # Delete status message
-        try:
-            await status_msg.delete()
-        except:
-            pass
-        
-        # Log to channel
-        try:
-            if hasattr(Config, 'LOG_CHANNEL') and Config.LOG_CHANNEL:
-                await client.send_message(
-                    Config.LOG_CHANNEL,
-                    f"📤 **New Upload**\n\n"
-                    f"**User:** {message.from_user.mention}\n"
-                    f"**File:** `{os.path.basename(filepath)}`\n"
-                    f"**Size:** {humanbytes(file_size)}\n"
-                    f"**Type:** {'Torrent' if is_torrent else 'Direct'}\n"
-                    f"**URL:** `{url[:50]}...`"
-                )
-        except Exception:
-            pass
+        # Store file info for callback
+        active_downloads[user_id]['filepath'] = filepath
+        active_downloads[user_id]['thumbnail'] = thumbnail
+        active_downloads[user_id]['caption'] = custom_caption
+        active_downloads[user_id]['status_msg'] = status_msg
         
     except Exception as e:
         await status_msg.edit_text(f"❌ **Error:** {str(e)}")
         await db.log_action(user_id, "error", str(e))
     
-    finally:
-        # Cleanup
-        if user_id in active_downloads:
-            del active_downloads[user_id]
-        
-        if filepath and os.path.exists(filepath):
-            downloader.cleanup(filepath)
-
 # Callback query handler
 @app.on_callback_query()
 async def callback_handler(client, callback_query):
@@ -484,7 +436,61 @@ async def callback_handler(client, callback_query):
     elif data == "settings":
         await settings_command(client, callback_query.message)
     
-    await callback_query.answer()
+    # Handle upload choice
+    elif data.startswith("upload_doc:") or data.startswith("upload_vid:"):
+        uid = int(data.split(":")[1])
+        if uid not in active_downloads:
+            await callback_query.answer("❌ File not found or expired", show_alert=True)
+            return
+        
+        info = active_downloads[uid]
+        filepath = info['filepath']
+        caption = info['caption']
+        thumbnail = info['thumbnail']
+        status_msg = info['status_msg']
+        
+        upload_progress = Progress(client, status_msg)
+        
+        try:
+            if data.startswith("upload_doc:"):
+                await client.send_document(
+                    chat_id=callback_query.message.chat.id,
+                    document=filepath,
+                    caption=caption,
+                    thumb=thumbnail,
+                    progress=upload_progress.progress_callback,
+                    progress_args=("Uploading",)
+                )
+            else:
+                await client.send_video(
+                    chat_id=callback_query.message.chat.id,
+                    video=filepath,
+                    caption=caption,
+                    thumb=thumbnail,
+                    progress=upload_progress.progress_callback,
+                    progress_args=("Uploading",),
+                    supports_streaming=True
+                )
+            
+            # Update stats
+            await db.update_stats(uid, upload=True)
+            await db.log_action(uid, "upload", filepath)
+            
+            await status_msg.delete()
+            await callback_query.message.delete()
+            
+        except Exception as e:
+            await status_msg.edit_text(f"❌ Upload failed: {str(e)}")
+        
+        finally:
+            if os.path.exists(filepath):
+                downloader.cleanup(filepath)
+            del active_downloads[uid]
+        
+        await callback_query.answer("✅ Upload started!")
+    
+    else:
+        await callback_query.answer()
 
 # Run bot
 if __name__ == "__main__":

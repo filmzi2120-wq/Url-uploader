@@ -1,26 +1,4 @@
-@app.on_message(filters.command("settings") & filters.private)
-async def settings_command(client, message: Message):
-    user_id = message.from_user.id
-    settings = user_settings.get(user_id, {})
-    
-    text = """⚙️ **Bot Settings**
-
-**Current Settings:**
-• Custom filename: {}
-• Custom caption: {}
-• Thumbnail: {}
-
-**How to set:**
-📝 Send `/setname <filename>` - Set custom filename
-💬 Send `/setcaption <text>` - Set custom caption
-🖼️ Send a photo - Set as thumbnail
-🗑️ Send `/clearsettings` - Clear all settings""".format(
-        settings.get('filename', 'Not set'),
-        'Set ✅' if settings.get('caption') else 'Not set',
-        'Set ✅' if settings.get('thumbnail') else 'Not set'
-    )
-    
-    await message.reply_text(text)import os
+import os
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
@@ -149,7 +127,7 @@ async def about_command(client, message: Message):
     
     await message.reply_text(text, reply_markup=keyboard, disable_web_page_preview=True)
 
-# Settings menu
+# Settings menu (Callback)
 @app.on_callback_query(filters.regex("^settings$"))
 async def settings_callback(client, callback: CallbackQuery):
     user_id = callback.from_user.id
@@ -177,6 +155,37 @@ async def settings_callback(client, callback: CallbackQuery):
     ])
     
     await callback.message.edit_text(text, reply_markup=keyboard)
+
+# Settings menu (Command) - Improved to include navigation button
+@app.on_message(filters.command("settings") & filters.private)
+async def settings_command(client, message: Message):
+    user_id = message.from_user.id
+    settings = user_settings.get(user_id, {})
+    
+    text = """⚙️ **Bot Settings**
+
+**Current Settings:**
+• Custom filename: {}
+• Custom caption: {}
+• Thumbnail: {}
+
+**How to set:**
+📝 Send `/setname <filename>` - Set custom filename
+💬 Send `/setcaption <text>` - Set custom caption
+🖼️ Send a photo - Set as thumbnail
+🗑️ Send `/clearsettings` - Clear all settings""".format(
+        settings.get('filename', 'Not set'),
+        'Set ✅' if settings.get('caption') else 'Not set',
+        'Set ✅' if settings.get('thumbnail') else 'Not set'
+    )
+
+    # Added keyboard for better UX consistency
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔙 Back to Start", callback_data="back_start")]
+    ])
+    
+    await message.reply_text(text, reply_markup=keyboard)
+
 
 # Status command
 @app.on_callback_query(filters.regex("^status$"))
@@ -382,17 +391,8 @@ async def update_cooldown_message(client, chat_id, msg_id, user_id, user_mention
             can_use, remaining = check_cooldown(user_id)
             
             if can_use:
-                # Cooldown finished - edit old message (remove button)
-                try:
-                    await client.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=msg_id,
-                        text="✅ **Upload Complete!**"
-                    )
-                except:
-                    pass
-                
-                # Send NEW message to notify user
+                # Cooldown finished - Keep last message as is, send SEPARATE new message
+                # Send SEPARATE NEW message to notify user
                 await client.send_message(
                     chat_id=chat_id,
                     text="✅ **You can send new task now** 🚀"
@@ -661,7 +661,54 @@ async def handle_thumbnail(client, message: Message):
         user_settings[user_id] = {}
     user_settings[user_id]['thumbnail'] = thumb_path
     
-    await message.reply_text("✅ **Thumbnail set successfully!**")
+    await message.reply_text(
+        "✅ **Saved your thumbnail**",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🗑️ Delete Thumbnail", callback_data="delete_thumb")]
+        ])
+    )
+
+# Show thumbnail command
+@app.on_message(filters.command("showthumb") & filters.private)
+async def showthumb_command(client, message: Message):
+    user_id = message.from_user.id
+    settings = user_settings.get(user_id, {})
+    thumbnail = settings.get('thumbnail')
+    
+    if thumbnail and os.path.exists(thumbnail):
+        await message.reply_photo(
+            photo=thumbnail,
+            caption="✅ **Your Current Thumbnail**",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🗑️ Delete Thumbnail", callback_data="delete_thumb")]
+            ])
+        )
+    else:
+        await message.reply_text(
+            "❌ **No thumbnail set!**\n\n"
+            "Send a photo to set as thumbnail."
+        )
+
+# Delete thumbnail callback
+@app.on_callback_query(filters.regex("^delete_thumb$"))
+async def delete_thumb_callback(client, callback: CallbackQuery):
+    user_id = callback.from_user.id
+    settings = user_settings.get(user_id, {})
+    thumbnail = settings.get('thumbnail')
+    
+    if thumbnail and os.path.exists(thumbnail):
+        try:
+            os.remove(thumbnail)
+            if user_id in user_settings:
+                user_settings[user_id]['thumbnail'] = None
+            await callback.message.edit_caption(
+                caption="🗑️ **Thumbnail deleted successfully!**"
+            )
+            await callback.answer("✅ Thumbnail deleted!", show_alert=True)
+        except Exception as e:
+            await callback.answer(f"❌ Error: {str(e)}", show_alert=True)
+    else:
+        await callback.answer("❌ No thumbnail to delete!", show_alert=True)
 
 # Broadcast (owner only)
 @app.on_message(filters.command("broadcast") & filters.user(Config.OWNER_ID))

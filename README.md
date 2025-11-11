@@ -4,15 +4,17 @@
 
 <img src="https://github.com/user-attachments/assets/d11e637d-b3da-42d6-9346-fe399665ca5c" alt="Telegram URL Uploader Bot" width="100%"/>
 
-![Python](https://img.shields.io/badge/Python-3.13.7-blue.svg)
-![Pyrogram](https://img.shields.io/badge/Pyrogram-2.7.4-green.svg)
-![MongoDB](https://img.shields.io/badge/MongoDB-Cloud-brightgreen.svg)
-![License](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Telegram](https://img.shields.io/badge/Telegram-Bot-blue.svg)
+[![Python](https://img.shields.io/badge/Python-3.13.7-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Pyrogram](https://img.shields.io/badge/Pyrogram-2.7.4-3776AB?style=for-the-badge&logo=telegram&logoColor=white)](https://docs.pyrogram.org/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Cloud-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
 **A powerful Telegram bot that can download files from any URL and upload them to Telegram with lightning speed!** ⚡
 
-[🚀 Demo Bot](#) • [📢 Updates](https://t.me/zerodevbro) • [🐛 Report Bug](https://github.com/zero-creation690/Url-uploader/issues) • [💡 Request Feature](https://github.com/zero-creation690/Url-uploader/issues)
+[![Demo Bot](https://img.shields.io/badge/🤖_Try_Demo_Bot-blue?style=for-the-badge)](https://t.me/Urluploader_z_bot)
+[![Updates Channel](https://img.shields.io/badge/📢_Updates_Channel-blue?style=for-the-badge)](https://t.me/zerodevbro)
+[![Report Bug](https://img.shields.io/badge/🐛_Report_Bug-red?style=for-the-badge)](https://github.com/zero-creation690/Url-uploader/issues)
+[![Request Feature](https://img.shields.io/badge/💡_Feature_Request-green?style=for-the-badge)](https://github.com/zero-creation690/Url-uploader/issues)
 
 </div>
 
@@ -317,6 +319,7 @@ black .
 ### Getting Help
 
 - 📢 **Updates Channel**: [@zerodevbro](https://t.me/zerodevbro)
+- 💬 **Support Group**: [@zerodevbro](https://t.me/zerodevbro)
 - 👨‍💻 **Developer**: [@Zeroboy216](https://t.me/Zeroboy216)
 - 🐛 **Issues**: [GitHub Issues](https://github.com/zero-creation690/Url-uploader/issues)
 
@@ -341,8 +344,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If you need help or want to suggest features:
 
-- 💬 **Telegram**: [@Zeroboy216](https://t.me/Zeroboy216)
-- 📢 **Channel**: [@zerodevbro](https://t.me/zerodevbro)
+- 🤖 **Demo Bot**: [@Urluploader_z_bot](https://t.me/Urluploader_z_bot)
+- 💬 **Support Group**: [@zerodevbro](https://t.me/zerodevbro)
+- 📢 **Updates Channel**: [@zerodevbro](https://t.me/zerodevbro)
+- 👨‍💻 **Developer**: [@Zeroboy216](https://t.me/Zeroboy216)
 - 🐛 **Issues**: [GitHub Issues](https://github.com/zero-creation690/Url-uploader/issues)
 - 💾 **Repository**: [zero-creation690/Url-uploader](https://github.com/zero-creation690/Url-uploader)
 
@@ -354,6 +359,8 @@ If you need help or want to suggest features:
 
 **Made with ❤️ by [Zero Boy](https://github.com/zero-creation690)**
 
-[🚀 Try Bot](#) • [📢 Join Channel](https://t.me/zerodevbro) • [💻 GitHub](https://github.com/zero-creation690/Url-uploader)
+[![Try Demo Bot](https://img.shields.io/badge/🤖_Try_Demo_Bot-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/Urluploader_z_bot)
+[![Join Channel](https://img.shields.io/badge/📢_Join_Channel-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/zerodevbro)
+[![GitHub](https://img.shields.io/badge/💻_GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/zero-creation690/Url-uploader)
 
 </div>

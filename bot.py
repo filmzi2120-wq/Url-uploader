@@ -107,6 +107,7 @@ async def about_callback(client, callback: CallbackQuery):
     )
     
     keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✴️ Sources", url="https://github.com/zerodev6/URL-UPLOADER")],
         [InlineKeyboardButton("🔙 Back", callback_data="back_start")]
     ])
     
@@ -120,6 +121,7 @@ async def about_command(client, message: Message):
     )
     
     keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✴️ Sources", url="https://github.com/zerodev6/URL-UPLOADER")],
         [InlineKeyboardButton("🔙 Back to Start", callback_data="back_start")]
     ])
     

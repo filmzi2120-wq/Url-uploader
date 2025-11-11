@@ -1,4 +1,26 @@
-import os
+@app.on_message(filters.command("settings") & filters.private)
+async def settings_command(client, message: Message):
+    user_id = message.from_user.id
+    settings = user_settings.get(user_id, {})
+    
+    text = """⚙️ **Bot Settings**
+
+**Current Settings:**
+• Custom filename: {}
+• Custom caption: {}
+• Thumbnail: {}
+
+**How to set:**
+📝 Send `/setname <filename>` - Set custom filename
+💬 Send `/setcaption <text>` - Set custom caption
+🖼️ Send a photo - Set as thumbnail
+🗑️ Send `/clearsettings` - Clear all settings""".format(
+        settings.get('filename', 'Not set'),
+        'Set ✅' if settings.get('caption') else 'Not set',
+        'Set ✅' if settings.get('thumbnail') else 'Not set'
+    )
+    
+    await message.reply_text(text)import os
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
@@ -332,7 +354,7 @@ async def handle_upload_type(client, callback: CallbackQuery):
         user_tasks[user_id] = {'cooldown_msg_id': cooldown_msg.id}
         
         # Background task to update cooldown message
-        asyncio.create_task(update_cooldown_message(client, callback.message.chat.id, cooldown_msg.id, user_id))
+        asyncio.create_task(update_cooldown_message(client, callback.message.chat.id, cooldown_msg.id, user_id, callback.from_user.mention))
         
         # Log to channel
         try:
@@ -354,35 +376,53 @@ async def handle_upload_type(client, callback: CallbackQuery):
         downloader.cleanup(filepath)
 
 # Background task to update cooldown message
-async def update_cooldown_message(client, chat_id, msg_id, user_id):
+async def update_cooldown_message(client, chat_id, msg_id, user_id, user_mention):
     try:
         while True:
             can_use, remaining = check_cooldown(user_id)
             
             if can_use:
-                # Cooldown finished
-                await client.edit_message_text(
+                # Cooldown finished - edit old message (remove button)
+                try:
+                    await client.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=msg_id,
+                        text="✅ **Upload Complete!**"
+                    )
+                except:
+                    pass
+                
+                # Send NEW message to notify user
+                await client.send_message(
                     chat_id=chat_id,
-                    message_id=msg_id,
-                    text="✅ **Upload Complete!**\n\nYou can send new task now 🚀",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔙 Back to Start", callback_data="back_start")]
-                    ])
+                    text="✅ **You can send new task now** 🚀"
                 )
+                
+                # Log to channel
+                try:
+                    await client.send_message(
+                        Config.LOG_CHANNEL,
+                        f"⏰ **Cooldown Finished**\n\n"
+                        f"👤 User: {user_mention}\n"
+                        f"✅ Can use bot again"
+                    )
+                except:
+                    pass
+                
                 # Clean up task
                 if user_id in user_tasks:
                     del user_tasks[user_id]
                 break
             else:
-                # Update remaining time
-                await client.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=msg_id,
-                    text=f"✅ **Upload Complete!**\n\nYou can send new task after **{format_time(remaining)}**",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔙 Back to Start", callback_data="back_start")]
-                    ])
-                )
+                # Update remaining time (NO BUTTONS)
+                try:
+                    await client.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=msg_id,
+                        text=f"✅ **Upload Complete!**\n\nYou can send new task after **{format_time(remaining)}**"
+                    )
+                except:
+                    pass
                 await asyncio.sleep(10)  # Update every 10 seconds
     except Exception as e:
         print(f"Error updating cooldown message: {e}")
@@ -649,6 +689,31 @@ async def broadcast_command(client, message: Message):
         f"✅ **Broadcast Complete!**\n\n"
         f"Success: {success}\nFailed: {failed}"
     )
+
+# Total users command (owner only)
+@app.on_message(filters.command("total") & filters.user(Config.OWNER_ID))
+async def total_command(client, message: Message):
+    try:
+        users = await db.get_all_users()
+        total_users = len(users)
+        
+        # Get some stats
+        total_downloads = sum(user.get('total_downloads', 0) for user in users)
+        total_uploads = sum(user.get('total_uploads', 0) for user in users)
+        
+        text = f"""📊 **Bot Statistics**
+
+👥 **Total Users:** {total_users}
+📥 **Total Downloads:** {total_downloads}
+📤 **Total Uploads:** {total_uploads}
+
+⚡ **Bot Status:** ✅ Online
+💾 **Database:** MongoDB
+🚀 **Speed:** 500 MB/s"""
+        
+        await message.reply_text(text)
+    except Exception as e:
+        await message.reply_text(f"❌ **Error:** {str(e)}")
 
 # Run bot
 if __name__ == "__main__":

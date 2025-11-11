@@ -1,11 +1,8 @@
-import os
+Import os
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 from pyrogram.enums import ParseMode
-# Import the correct function for V2+ reactions
-from pyrogram.raw.functions.messages import SetReactions
-from pyrogram.raw.types import ReactionEmoji
 from config import Config
 from database import db
 from downloader import downloader
@@ -29,8 +26,10 @@ user_cooldowns = {}
 # Cooldown settings
 COOLDOWN_TIME = 159  # 2 minutes 39 seconds
 
-# Random emojis for reactions (using standard emoji)
+# Random emojis for reactions
 REACTION_EMOJIS = ["👍", "❤", "🔥", "🎉", "😍", "👏", "⚡", "✨", "💯", "🚀"]
+
+# --- Utility Functions ---
 
 def format_time(seconds):
     """Format seconds to minutes and seconds"""
@@ -54,29 +53,47 @@ def get_remaining_time(user_id):
     
     return int(remaining)
 
-# --- FIXED REACTION FUNCTION ---
-async def add_random_reaction(client: Client, message: Message):
-    """Add random reaction to message - Uses the recommended Pyrogram V2+ set_reaction method."""
-    try:
-        random_emoji = random.choice(REACTION_EMOJIS)
-        
-        # Use client.set_reaction() which internally uses messages.SetReactions
-        # This is the correct method for bots to react to messages.
-        await client.set_reaction(
-            chat_id=message.chat.id,
-            message_id=message.id,
-            emoji=random_emoji
-        )
-        print(f"[REACTION] ✅ Added {random_emoji} to message {message.id}")
-        return True
-            
-    except Exception as e:
-        # A 400 REACTION_INVALID error often means the bot lacks the 'Manage Reactions' permission
-        # or reactions are disabled in the chat.
-        print(f"[REACTION] ❌ Failed to add reaction to message {message.id}. Error: {e}")
-        return False
+# --- Cooldown Refresher Task ---
 
-# Start command - Auto-filter style with random reaction
+async def cooldown_refresher(client, message: Message, user_id):
+    """Refreshes the cooldown status message every 10 seconds until cooldown expires."""
+    
+    while True:
+        remaining = get_remaining_time(user_id)
+        
+        if remaining <= 0:
+            # Cooldown ended
+            if user_id in user_cooldowns:
+                del user_cooldowns[user_id]
+                
+            try:
+                await message.edit_text(
+                    "✅ **Upload Complete!**\n\n"
+                    "**ʏᴏᴜ ᴄᴀɴ ꜱᴇɴᴅ ɴᴇᴡ ᴛᴀꜱᴋ ɴᴏᴡ 🚀**"
+                )
+            except:
+                # Message might have been deleted or edited
+                pass
+            break
+        
+        time_str = format_time(remaining)
+        
+        try:
+            # Refresh message every 10 seconds
+            await message.edit_text(
+                f"✅ **Upload Complete!**\n\n"
+                f"**ʏᴏᴜ ᴄᴀɴ ꜱᴇɴᴅ ɴᴇᴡ ᴛᴀꜱᴋ ᴀꜰᴛᴇʀ {time_str}**"
+            )
+        except Exception as e:
+            # Handle potential MessageNotModified or message deletion
+            print(f"Error updating cooldown message: {e}")
+            break
+            
+        await asyncio.sleep(10) # Refresh every 10 seconds
+
+# --- Command Handlers ---
+
+# Start command - Auto-filter style with random reaction (Updated: Stylized text, Image, Simplified Keyboard)
 @app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message: Message):
     user_id = message.from_user.id
@@ -86,24 +103,35 @@ async def start_command(client, message: Message):
     await db.add_user(user_id, username, first_name)
     
     # Add random reaction to /start message
-    await add_random_reaction(client, message)
+    try:
+        random_emoji = random.choice(REACTION_EMOJIS)
+        await message.react(random_emoji)
+    except Exception as e:
+        print(f"Reaction failed: {e}")
     
-    text = Config.START_MESSAGE.format(
-        name=first_name,
-        dev=Config.DEVELOPER,
-        channel=Config.UPDATE_CHANNEL
+    # Stylized welcome message
+    text = (
+        f"**ɪ ᴀᴍ ᴛʜᴇ {first_name}**, ᴀ ᴘᴏᴡᴇʀꜰᴜʟ ᴜʀʟ ᴜᴘʟᴏᴀᴅᴇʀ ʙᴏᴛ.\n\n"
+        "**ꜱᴇɴᴅ ᴍᴇ ᴀɴʏ ᴅɪʀᴇᴄᴛ ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋ** (ʜᴛᴛᴘ/ʜᴛᴛᴘꜱ/ꜰᴛᴘ/ᴛᴏʀʀᴇɴᴛ) ᴏʀ ᴀ **.ᴛᴏʀʀᴇɴᴛ ꜰɪʟᴇ**, ᴀɴᴅ ɪ ᴡɪʟʟ ᴜᴘʟᴏᴀᴅ ɪᴛ ᴛᴏ ᴛᴇʟᴇɢʀᴀᴍ ꜰᴏʀ ʏᴏᴜ.\n\n"
+        f"**ᴅᴇᴠᴇʟᴏᴘᴇʀ:** [{Config.DEVELOPER}]({Config.UPDATE_CHANNEL})\n"
+        f"**ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ:** {Config.UPDATE_CHANNEL}"
     )
     
-    # Auto-filter style buttons
+    # Simplified keyboard (Status and Settings removed)
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("📚 Help", callback_data="help"),
          InlineKeyboardButton("ℹ️ About", callback_data="about")],
-        [InlineKeyboardButton("⚙️ Settings", callback_data="settings"),
-         InlineKeyboardButton("📊 Status", callback_data="status")],
         [InlineKeyboardButton("📢 Updates Channel", url=Config.UPDATE_CHANNEL)]
     ])
     
-    await message.reply_text(text, reply_markup=keyboard, disable_web_page_preview=True)
+    # Send photo with caption
+    await client.send_photo(
+        chat_id=message.chat.id,
+        photo="https://ar-hosting.pages.dev/1762658234858.jpg",
+        caption=text,
+        reply_markup=keyboard,
+        disable_web_page_preview=True
+    )
 
 # Help command - Shows everything in one message
 @app.on_callback_query(filters.regex("^help$"))
@@ -121,9 +149,6 @@ async def help_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("help") & filters.private)
 async def help_command(client, message: Message):
-    # Add reaction
-    await add_random_reaction(client, message)
-    
     text = Config.HELP_MESSAGE.format(
         dev=Config.DEVELOPER,
         channel=Config.UPDATE_CHANNEL
@@ -152,9 +177,6 @@ async def about_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("about") & filters.private)
 async def about_command(client, message: Message):
-    # Add reaction
-    await add_random_reaction(client, message)
-    
     text = Config.ABOUT_MESSAGE.format(
         dev=Config.DEVELOPER,
         channel=Config.UPDATE_CHANNEL
@@ -167,7 +189,7 @@ async def about_command(client, message: Message):
     
     await message.reply_text(text, reply_markup=keyboard, disable_web_page_preview=True)
 
-# Settings menu
+# Settings menu (Still kept for /settings command)
 @app.on_callback_query(filters.regex("^settings$"))
 async def settings_callback(client, callback: CallbackQuery):
     user_id = callback.from_user.id
@@ -199,9 +221,6 @@ async def settings_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("settings") & filters.private)
 async def settings_command(client, message: Message):
-    # Add reaction
-    await add_random_reaction(client, message)
-    
     user_id = message.from_user.id
     settings = user_settings.get(user_id, {})
     
@@ -229,7 +248,7 @@ async def settings_command(client, message: Message):
     
     await message.reply_text(text, reply_markup=keyboard)
 
-# Status command
+# Status command (Still kept for /status command)
 @app.on_callback_query(filters.regex("^status$"))
 async def status_callback(client, callback: CallbackQuery):
     user_id = callback.from_user.id
@@ -263,9 +282,6 @@ async def status_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("status") & filters.private)
 async def status_command(client, message: Message):
-    # Add reaction
-    await add_random_reaction(client, message)
-    
     user_id = message.from_user.id
     user_data = await db.get_user(user_id)
     
@@ -291,23 +307,24 @@ async def status_command(client, message: Message):
     
     await message.reply_text(text)
 
-# Back to start
+# Back to start (Updated: Simplified Keyboard, Stylized text)
 @app.on_callback_query(filters.regex("^back_start$"))
 async def back_start(client, callback: CallbackQuery):
     user_id = callback.from_user.id
     first_name = callback.from_user.first_name
     
-    text = Config.START_MESSAGE.format(
-        name=first_name,
-        dev=Config.DEVELOPER,
-        channel=Config.UPDATE_CHANNEL
+    # Stylized welcome message
+    text = (
+        f"**ɪ ᴀᴍ ᴛʜᴇ {first_name}**, ᴀ ᴘᴏᴡᴇʀꜰᴜʟ ᴜʀʟ ᴜᴘʟᴏᴀᴅᴇʀ ʙᴏᴛ.\n\n"
+        "**ꜱᴇɴᴅ ᴍᴇ ᴀɴʏ ᴅɪʀᴇᴄᴛ ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋ** (ʜᴛᴛᴘ/ʜᴛᴛᴘꜱ/ꜰᴛᴘ/ᴛᴏʀʀᴇɴᴛ) ᴏʀ ᴀ **.ᴛᴏʀʀᴇɴᴛ ꜰɪʟᴇ**, ᴀɴᴅ ɪ ᴡɪʟʟ ᴜᴘʟᴏᴀᴅ ɪᴛ ᴛᴏ ᴛᴇʟᴇɢʀᴀᴍ ꜰᴏʀ ʏᴏᴜ.\n\n"
+        f"**ᴅᴇᴠᴇʟᴏᴘᴇʀ:** [{Config.DEVELOPER}]({Config.UPDATE_CHANNEL})\n"
+        f"**ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ:** {Config.UPDATE_CHANNEL}"
     )
     
+    # Simplified keyboard (Status and Settings removed)
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("📚 Help", callback_data="help"),
          InlineKeyboardButton("ℹ️ About", callback_data="about")],
-        [InlineKeyboardButton("⚙️ Settings", callback_data="settings"),
-         InlineKeyboardButton("📊 Status", callback_data="status")],
         [InlineKeyboardButton("📢 Updates Channel", url=Config.UPDATE_CHANNEL)]
     ])
     
@@ -348,7 +365,7 @@ async def handle_upload_type(client, callback: CallbackQuery):
         progress = Progress(client, callback.message)
         
         if upload_type == 'doc':
-            sent_msg = await client.send_document(
+            await client.send_document(
                 chat_id=callback.message.chat.id,
                 document=filepath,
                 caption=caption,
@@ -377,7 +394,7 @@ async def handle_upload_type(client, callback: CallbackQuery):
             except:
                 pass
             
-            sent_msg = await client.send_video(
+            await client.send_video(
                 chat_id=callback.message.chat.id,
                 video=filepath,
                 caption=caption,
@@ -390,9 +407,6 @@ async def handle_upload_type(client, callback: CallbackQuery):
                 progress_args=("Uploading",)
             )
         
-        # Add reaction to uploaded file
-        await add_random_reaction(client, sent_msg)
-        
         await db.update_stats(user_id, upload=True)
         await db.log_action(user_id, "upload", filepath)
         
@@ -401,24 +415,18 @@ async def handle_upload_type(client, callback: CallbackQuery):
         # Set cooldown after successful upload
         user_cooldowns[user_id] = time.time()
         
-        # Success message with cooldown
+        # Success message with cooldown (No button, starts refresher)
         remaining = get_remaining_time(user_id)
         time_str = format_time(remaining)
         
         success_msg = await client.send_message(
             callback.message.chat.id,
             f"✅ **Upload Complete!**\n\n"
-            f"You can send new task after {time_str}",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Back to Start", callback_data="back_start")]
-            ])
+            f"**ʏᴏᴜ ᴄᴀɴ ꜱᴇɴᴅ ɴᴇᴡ ᴛᴀꜱᴋ ᴀꜰᴛᴇʀ {time_str}**"
         )
         
-        # Add reaction to success message
-        await add_random_reaction(client, success_msg)
-        
-        # Start cooldown notification task
-        asyncio.create_task(cooldown_notification(client, callback.message.chat.id, user_id))
+        # Start cooldown notification task to refresh every 10 seconds
+        asyncio.create_task(cooldown_refresher(client, success_msg, user_id))
         
         # Log to channel
         try:
@@ -441,25 +449,6 @@ async def handle_upload_type(client, callback: CallbackQuery):
         if user_id in user_tasks:
             del user_tasks[user_id]
 
-async def cooldown_notification(client, chat_id, user_id):
-    """Send notification when cooldown expires"""
-    remaining = get_remaining_time(user_id)
-    if remaining > 0:
-        await asyncio.sleep(remaining)
-    
-    # Check if cooldown is still active (user might have been removed)
-    if user_id in user_cooldowns:
-        del user_cooldowns[user_id]
-        
-        try:
-            notif_msg = await client.send_message(
-                chat_id,
-                "You can send new task now 🚀"
-            )
-            # Add reaction to notification
-            await add_random_reaction(client, notif_msg)
-        except:
-            pass
 
 # Handle rename callback
 @app.on_callback_query(filters.regex("^rename_"))
@@ -478,9 +467,9 @@ async def handle_rename_callback(client, callback: CallbackQuery):
         user_tasks[user_id]['waiting_rename'] = True
         
         await callback.message.edit_text(
-            f"📝 **Send new name for this file**\n\n"
-            f"Current: `{filename}`\n\n"
-            f"Type the new filename and send:"
+            f"📝 **ꜱᴇɴᴅ ɴᴇᴡ ɴᴀᴍᴇ ꜰᴏʀ ᴛʜɪꜱ ꜰɪʟᴇ**\n\n"
+            f"**Current:** `{filename}`\n\n"
+            f"**Type the new filename and send:**"
         )
         await callback.answer("Type new filename and send")
         
@@ -494,7 +483,7 @@ async def handle_rename_callback(client, callback: CallbackQuery):
         ])
         
         await callback.message.edit_text(
-            "**Choose upload type:**\n\nHow do you want to upload this file?",
+            "**ᴄʜᴏᴏꜱᴇ ᴜᴘʟᴏᴀᴅ ᴛʏᴘᴇ:**\n\nHow do you want to upload this file?",
             reply_markup=keyboard
         )
         await callback.answer()
@@ -504,18 +493,10 @@ async def handle_rename_callback(client, callback: CallbackQuery):
 async def handle_text_input(client, message: Message):
     user_id = message.from_user.id
     
-    # Debug: Check if user has active task
-    print(f"[DEBUG] User {user_id} sent text: {message.text[:50]}")
-    print(f"[DEBUG] Active tasks: {user_id in user_tasks}")
-    if user_id in user_tasks:
-        print(f"[DEBUG] Waiting for rename: {user_tasks[user_id].get('waiting_rename', False)}")
-    
     # Check if waiting for rename
     if user_id in user_tasks and user_tasks[user_id].get('waiting_rename'):
         new_name = message.text.strip()
         filepath = user_tasks[user_id]['filepath']
-        
-        print(f"[DEBUG] Renaming {filepath} to {new_name}")
         
         # Create new path with new name
         new_path = os.path.join(os.path.dirname(filepath), new_name)
@@ -527,33 +508,25 @@ async def handle_text_input(client, message: Message):
                 user_tasks[user_id]['filepath'] = new_path
                 user_tasks[user_id]['waiting_rename'] = False
                 
-                print(f"[DEBUG] Rename successful!")
-                
                 # Show upload options
                 keyboard = InlineKeyboardMarkup([
                     [InlineKeyboardButton("📁 Upload as Document", callback_data="upload_doc")],
                     [InlineKeyboardButton("🎥 Upload as Video", callback_data="upload_video")]
                 ])
                 
-                reply_msg = await message.reply_text(
-                    f"✅ **Renamed to:** `{new_name}`\n\n**Choose upload type:**",
+                await message.reply_text(
+                    f"✅ **Renamed to:** `{new_name}`\n\n**ᴄʜᴏᴏꜱᴇ ᴜᴘʟᴏᴀᴅ ᴛʏᴘᴇ:**",
                     reply_markup=keyboard
                 )
-                
-                # Add reaction to rename confirmation
-                await add_random_reaction(client, message)
             else:
-                print(f"[DEBUG] File not found: {filepath}")
                 await message.reply_text("❌ **Error:** File not found!")
         except Exception as e:
-            print(f"[DEBUG] Rename error: {str(e)}")
             await message.reply_text(f"❌ **Rename failed:** {str(e)}")
         return
     
     # If not waiting for rename, check if it's a URL
     url = message.text.strip()
     if not (is_url(url) or is_magnet(url)):
-        print(f"[DEBUG] Not a valid URL, ignoring")
         return
     
     # Check cooldown before processing
@@ -561,12 +534,11 @@ async def handle_text_input(client, message: Message):
     if remaining > 0:
         time_str = format_time(remaining)
         await message.reply_text(
-            f"👆 See this message and wait till this time.\n\n"
-            f"⏳ You can send new task after {time_str}"
+            f"👆 **ꜱᴇᴇ ᴛʜɪꜱ ᴍᴇꜱꜱᴀɢᴇ** ᴀɴᴅ ᴡᴀɪᴛ ᴛɪʟʟ ᴛʜɪꜱ ᴛɪᴍᴇ.\n\n"
+            f"⏳ **ʏᴏᴜ ᴄᴀɴ ꜱᴇɴᴅ ɴᴇᴡ ᴛᴀꜱᴋ ᴀꜰᴛᴇʀ {time_str}**"
         )
         return
     
-    print(f"[DEBUG] Processing as download URL")
     # Process as download
     await process_download(client, message, url)
 
@@ -580,16 +552,13 @@ async def handle_document(client, message: Message):
     if remaining > 0:
         time_str = format_time(remaining)
         await message.reply_text(
-            f"👆 See this message and wait till this time.\n\n"
-            f"⏳ You can send new task after {time_str}"
+            f"👆 **ꜱᴇᴇ ᴛʜɪꜱ ᴍᴇꜱꜱᴀɢᴇ** ᴀɴᴅ ᴡᴀɪᴛ ᴛɪʟʟ ᴛʜɪꜱ ᴛɪᴍᴇ.\n\n"
+            f"⏳ **ʏᴏᴜ ᴄᴀɴ ꜱᴇɴᴅ ɴᴇᴡ ᴛᴀꜱᴋ ᴀꜰᴛᴇʀ {time_str}**"
         )
         return
     
     # Check if it's a torrent file
     if message.document and message.document.file_name.endswith('.torrent'):
-        # Add reaction to torrent file
-        await add_random_reaction(client, message)
-        
         torrent_path = await message.download()
         await process_download(client, message, torrent_path)
 
@@ -599,11 +568,8 @@ async def process_download(client, message: Message, url):
     
     await db.add_user(user_id, message.from_user.username, message.from_user.first_name)
     
-    # Add reaction to download request
-    await add_random_reaction(client, message)
-    
     # Start download
-    status_msg = await message.reply_text("🔄 **Processing your request...**\n\nStarting download...")
+    status_msg = await message.reply_text("🔄 **ᴘʀᴏᴄᴇꜱꜱɪɴɢ ʏᴏᴜʀ ʀᴇQᴜᴇꜱᴛ...**\n\nStarting download...")
     
     try:
         # Download with progress
@@ -634,7 +600,7 @@ async def process_download(client, message: Message, url):
             f"📁 **File:** `{filename}`\n"
             f"💾 **Size:** {humanbytes(filesize)}\n"
             f"⚡ **Speed:** 500 MB/s\n\n"
-            f"📝 **Send new name for this file** - 📁 `{filename}`"
+            f"**📝 ꜱᴇɴᴅ ɴᴇᴡ ɴᴀᴍᴇ ꜰᴏʀ ᴛʜɪꜱ ꜰɪʟᴇ** - 📁 `{filename}`"
         )
         
         keyboard = InlineKeyboardMarkup([
@@ -661,12 +627,9 @@ async def process_download(client, message: Message, url):
         await status_msg.edit_text(f"❌ **Error:** {str(e)}\n\nSomething went wrong. Please try again.")
         await db.log_action(user_id, "error", str(e))
 
-# Settings commands
+# Settings commands (Unchanged)
 @app.on_message(filters.command("setname") & filters.private)
 async def setname_command(client, message: Message):
-    # Add reaction
-    await add_random_reaction(client, message)
-    
     user_id = message.from_user.id
     if len(message.command) < 2:
         await message.reply_text("**Usage:** `/setname filename.ext`\n\nExample: `/setname movie.mp4`")
@@ -681,9 +644,6 @@ async def setname_command(client, message: Message):
 
 @app.on_message(filters.command("setcaption") & filters.private)
 async def setcaption_command(client, message: Message):
-    # Add reaction
-    await add_random_reaction(client, message)
-    
     user_id = message.from_user.id
     if len(message.command) < 2:
         await message.reply_text("**Usage:** `/setcaption Your caption here`")
@@ -698,20 +658,14 @@ async def setcaption_command(client, message: Message):
 
 @app.on_message(filters.command("clearsettings") & filters.private)
 async def clearsettings_command(client, message: Message):
-    # Add reaction
-    await add_random_reaction(client, message)
-    
     user_id = message.from_user.id
     if user_id in user_settings:
         user_settings[user_id] = {}
     await message.reply_text("✅ **All settings cleared!**")
 
-# Thumbnail handler
+# Thumbnail handler (Unchanged)
 @app.on_message(filters.photo & filters.private)
 async def handle_thumbnail(client, message: Message):
-    # Add reaction
-    await add_random_reaction(client, message)
-    
     user_id = message.from_user.id
     thumb_path = await message.download(file_name=f"{Config.DOWNLOAD_DIR}/thumb_{user_id}.jpg")
     
@@ -728,12 +682,9 @@ async def handle_thumbnail(client, message: Message):
         reply_markup=keyboard
     )
 
-# Show thumbnail command
+# Show thumbnail command (Unchanged)
 @app.on_message(filters.command("showthumb") & filters.private)
 async def showthumb_command(client, message: Message):
-    # Add reaction
-    await add_random_reaction(client, message)
-    
     user_id = message.from_user.id
     settings = user_settings.get(user_id, {})
     
@@ -755,7 +706,7 @@ async def showthumb_command(client, message: Message):
             "Send a photo to set as thumbnail."
         )
 
-# Delete thumbnail callback
+# Delete thumbnail callback (Unchanged)
 @app.on_callback_query(filters.regex("^delete_thumb$"))
 async def delete_thumb_callback(client, callback: CallbackQuery):
     user_id = callback.from_user.id
@@ -776,12 +727,9 @@ async def delete_thumb_callback(client, callback: CallbackQuery):
     else:
         await callback.answer("No thumbnail to delete!", show_alert=True)
 
-# Total stats command (owner only)
+# Total stats command (owner only - Unchanged)
 @app.on_message(filters.command("total") & filters.user(Config.OWNER_ID))
 async def total_command(client, message: Message):
-    # Add reaction
-    await add_random_reaction(client, message)
-    
     stats = await db.get_stats()
     
     text = f"""📈 **Bot Statistics**
@@ -804,12 +752,9 @@ async def total_command(client, message: Message):
     
     await message.reply_text(text)
 
-# Broadcast (owner only)
+# Broadcast (owner only - Unchanged)
 @app.on_message(filters.command("broadcast") & filters.user(Config.OWNER_ID))
 async def broadcast_command(client, message: Message):
-    # Add reaction
-    await add_random_reaction(client, message)
-    
     if not message.reply_to_message:
         await message.reply_text("❌ Reply to a message to broadcast!")
         return
@@ -834,7 +779,7 @@ async def broadcast_command(client, message: Message):
         f"Success: {success}\nFailed: {failed}"
     )
 
-# Run bot
+# Run bot (Unchanged)
 if __name__ == "__main__":
     print("=" * 50)
     print("🚀 URL Uploader Bot Starting...")

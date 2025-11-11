@@ -8,6 +8,7 @@ from database import db
 from downloader import downloader
 from helpers import Progress, humanbytes, is_url, is_magnet
 import time
+import random
 
 # Initialize bot
 app = Client(
@@ -20,8 +21,37 @@ app = Client(
 # User settings and tasks storage
 user_settings = {}
 user_tasks = {}
+user_cooldowns = {}
 
-# Start command - Auto-filter style
+# Cooldown settings
+COOLDOWN_TIME = 159  # 2 minutes 39 seconds
+
+# Random emojis for reactions
+REACTION_EMOJIS = ["👍", "❤", "🔥", "🎉", "😍", "👏", "⚡", "✨", "💯", "🚀"]
+
+def format_time(seconds):
+    """Format seconds to minutes and seconds"""
+    minutes = seconds // 60
+    secs = seconds % 60
+    if minutes > 0:
+        return f"{minutes} minute{'s' if minutes > 1 else ''}, {secs} second{'s' if secs != 1 else ''}"
+    return f"{secs} second{'s' if secs != 1 else ''}"
+
+def get_remaining_time(user_id):
+    """Get remaining cooldown time for user"""
+    if user_id not in user_cooldowns:
+        return 0
+    
+    elapsed = time.time() - user_cooldowns[user_id]
+    remaining = COOLDOWN_TIME - elapsed
+    
+    if remaining <= 0:
+        del user_cooldowns[user_id]
+        return 0
+    
+    return int(remaining)
+
+# Start command - Auto-filter style with random reaction
 @app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message: Message):
     user_id = message.from_user.id
@@ -29,6 +59,13 @@ async def start_command(client, message: Message):
     first_name = message.from_user.first_name
     
     await db.add_user(user_id, username, first_name)
+    
+    # Add random reaction to /start message
+    try:
+        random_emoji = random.choice(REACTION_EMOJIS)
+        await message.react(random_emoji)
+    except Exception as e:
+        print(f"Reaction failed: {e}")
     
     text = Config.START_MESSAGE.format(
         name=first_name,
@@ -83,6 +120,7 @@ async def about_callback(client, callback: CallbackQuery):
     )
     
     keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✴️ Sources", url="https://github.com/zerodev6/URL-UPLOADER")],
         [InlineKeyboardButton("🔙 Back", callback_data="back_start")]
     ])
     
@@ -96,6 +134,7 @@ async def about_command(client, message: Message):
     )
     
     keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✴️ Sources", url="https://github.com/zerodev6/URL-UPLOADER")],
         [InlineKeyboardButton("🔙 Back to Start", callback_data="back_start")]
     ])
     
@@ -323,14 +362,24 @@ async def handle_upload_type(client, callback: CallbackQuery):
         
         await callback.message.delete()
         
-        # Success message
+        # Set cooldown after successful upload
+        user_cooldowns[user_id] = time.time()
+        
+        # Success message with cooldown
+        remaining = get_remaining_time(user_id)
+        time_str = format_time(remaining)
+        
         await client.send_message(
             callback.message.chat.id,
-            "✅ **Upload Complete!**\n\nYou can send new task now 🚀",
+            f"✅ **Upload Complete!**\n\n"
+            f"You can send new task after {time_str}",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 Back to Start", callback_data="back_start")]
             ])
         )
+        
+        # Start cooldown notification task
+        asyncio.create_task(cooldown_notification(client, callback.message.chat.id, user_id))
         
         # Log to channel
         try:
@@ -352,6 +401,24 @@ async def handle_upload_type(client, callback: CallbackQuery):
         downloader.cleanup(filepath)
         if user_id in user_tasks:
             del user_tasks[user_id]
+
+async def cooldown_notification(client, chat_id, user_id):
+    """Send notification when cooldown expires"""
+    remaining = get_remaining_time(user_id)
+    if remaining > 0:
+        await asyncio.sleep(remaining)
+    
+    # Check if cooldown is still active (user might have been removed)
+    if user_id in user_cooldowns:
+        del user_cooldowns[user_id]
+        
+        try:
+            await client.send_message(
+                chat_id,
+                "You can send new task now 🚀"
+            )
+        except:
+            pass
 
 # Handle rename callback
 @app.on_callback_query(filters.regex("^rename_"))
@@ -445,6 +512,16 @@ async def handle_text_input(client, message: Message):
         print(f"[DEBUG] Not a valid URL, ignoring")
         return
     
+    # Check cooldown before processing
+    remaining = get_remaining_time(user_id)
+    if remaining > 0:
+        time_str = format_time(remaining)
+        await message.reply_text(
+            f"👆 See this message and wait till this time.\n\n"
+            f"⏳ You can send new task after {time_str}"
+        )
+        return
+    
     print(f"[DEBUG] Processing as download URL")
     # Process as download
     await process_download(client, message, url)
@@ -453,6 +530,16 @@ async def handle_text_input(client, message: Message):
 @app.on_message(filters.document & filters.private)
 async def handle_document(client, message: Message):
     user_id = message.from_user.id
+    
+    # Check cooldown for torrent uploads too
+    remaining = get_remaining_time(user_id)
+    if remaining > 0:
+        time_str = format_time(remaining)
+        await message.reply_text(
+            f"👆 See this message and wait till this time.\n\n"
+            f"⏳ You can send new task after {time_str}"
+        )
+        return
     
     # Check if it's a torrent file
     if message.document and message.document.file_name.endswith('.torrent'):
@@ -683,5 +770,6 @@ if __name__ == "__main__":
     print(f"👨‍💻 Developer: {Config.DEVELOPER}")
     print(f"📢 Updates: {Config.UPDATE_CHANNEL}")
     print(f"⚡ Speed: 500 MB/s")
+    print(f"⏱️ Cooldown: {format_time(COOLDOWN_TIME)}")
     print("=" * 50)
     app.run()

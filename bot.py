@@ -3,6 +3,9 @@ import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 from pyrogram.enums import ParseMode
+# Import the correct function for V2+ reactions
+from pyrogram.raw.functions.messages import SetReactions
+from pyrogram.raw.types import ReactionEmoji
 from config import Config
 from database import db
 from downloader import downloader
@@ -51,43 +54,26 @@ def get_remaining_time(user_id):
     
     return int(remaining)
 
+# --- FIXED REACTION FUNCTION ---
 async def add_random_reaction(client: Client, message: Message):
-    """Add random reaction to message - Multiple methods for compatibility"""
+    """Add random reaction to message - Uses the recommended Pyrogram V2+ set_reaction method."""
     try:
         random_emoji = random.choice(REACTION_EMOJIS)
         
-        # Try different methods based on Pyrogram version
-        try:
-            # Pyrogram v2.0+ method
-            from pyrogram.raw.functions.messages import SendReaction
-            from pyrogram.raw.types import ReactionEmoji
+        # Use client.set_reaction() which internally uses messages.SetReactions
+        # This is the correct method for bots to react to messages.
+        await client.set_reaction(
+            chat_id=message.chat.id,
+            message_id=message.id,
+            emoji=random_emoji
+        )
+        print(f"[REACTION] ✅ Added {random_emoji} to message {message.id}")
+        return True
             
-            await client.invoke(
-                SendReaction(
-                    peer=await client.resolve_peer(message.chat.id),
-                    msg_id=message.id,
-                    reaction=[ReactionEmoji(emoticon=random_emoji)]
-                )
-            )
-            print(f"[REACTION] ✅ Added {random_emoji} to message {message.id}")
-            return True
-            
-        except ImportError:
-            # Fallback: Try client.send_reaction if available
-            try:
-                await client.send_reaction(
-                    chat_id=message.chat.id,
-                    message_id=message.id,
-                    emoji=random_emoji
-                )
-                print(f"[REACTION] ✅ Added {random_emoji} (method 2)")
-                return True
-            except AttributeError:
-                pass
-        
     except Exception as e:
-        print(f"[REACTION] ❌ Failed: {e}")
-        print(f"[REACTION] Make sure you're using Pyrogram v2.0+")
+        # A 400 REACTION_INVALID error often means the bot lacks the 'Manage Reactions' permission
+        # or reactions are disabled in the chat.
+        print(f"[REACTION] ❌ Failed to add reaction to message {message.id}. Error: {e}")
         return False
 
 # Start command - Auto-filter style with random reaction

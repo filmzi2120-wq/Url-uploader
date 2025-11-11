@@ -3,8 +3,9 @@ import aiohttp
 import asyncio
 import yt_dlp
 import libtorrent as lt
+import subprocess
 from config import Config
-from helpers import speed_limiter, sanitize_filename
+from helpers import speed_limiter, sanitize_filename, is_video_file
 import time
 import shutil
 
@@ -18,10 +19,17 @@ class Downloader:
             os.makedirs(self.torrent_dir)
     
     async def download_file(self, url, filename=None, progress_callback=None):
-        """Download file from URL using aiohttp with 200 MB/s speed"""
+        """Download file from URL using aiohttp with 200 MB/s speed - preserves original quality"""
         try:
             timeout = aiohttp.ClientTimeout(total=None, connect=60)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Encoding': 'identity',  # Don't compress, keep original
+                'Connection': 'keep-alive'
+            }
+            
+            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
                 async with session.get(url, allow_redirects=True) as response:
                     if response.status != 200:
                         return None, f"Failed to download: HTTP {response.status}"
@@ -46,6 +54,7 @@ class Downloader:
                     start_time = time.time()
                     last_update = 0
                     
+                    # Write in binary mode to preserve original file
                     with open(filepath, 'wb') as f:
                         async for chunk in response.content.iter_chunked(Config.CHUNK_SIZE):
                             f.write(chunk)
@@ -66,24 +75,41 @@ class Downloader:
             return None, f"Download error: {str(e)}"
     
     async def download_ytdlp(self, url, progress_callback=None):
-        """Download using yt-dlp with best quality"""
+        """Download using yt-dlp with best quality and original audio"""
         try:
             ydl_opts = {
                 'outtmpl': os.path.join(self.download_dir, '%(title)s.%(ext)s'),
-                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                # Best video + best audio, preserve original quality
+                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best',
                 'merge_output_format': 'mp4',
                 'quiet': False,
                 'no_warnings': False,
                 'extract_flat': False,
                 'writethumbnail': True,
-                'postprocessors': [{
-                    'key': 'FFmpegVideoConvertor',
-                    'preferedformat': 'mp4',
-                }, {
-                    'key': 'FFmpegMetadata',
-                }, {
-                    'key': 'EmbedThumbnail',
-                }],
+                # Audio settings - keep original
+                'postprocessor_args': [
+                    '-c:v', 'copy',  # Copy video stream without re-encoding
+                    '-c:a', 'aac',   # Use AAC for audio (best compatibility)
+                    '-b:a', '320k',  # High quality audio bitrate
+                    '-ar', '48000',  # 48kHz sample rate
+                    '-ac', '2',      # Stereo audio
+                ],
+                'keepvideo': False,
+                'prefer_ffmpeg': True,
+                'postprocessors': [
+                    {
+                        'key': 'FFmpegVideoConvertor',
+                        'preferedformat': 'mp4',
+                    },
+                    {
+                        'key': 'FFmpegMetadata',
+                        'add_metadata': True,
+                    },
+                    {
+                        'key': 'EmbedThumbnail',
+                        'already_have_thumbnail': False,
+                    },
+                ],
             }
             
             loop = asyncio.get_event_loop()

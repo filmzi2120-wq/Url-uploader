@@ -57,7 +57,7 @@ class Config:
 𖣔 Usᴇ `/caption` ᴛᴏ sᴇᴛ ᴄᴀᴘᴛɪᴏɴ ᴀs Rᴇᴘʟʏ ᴛᴏ ᴍᴇᴅɪᴀ
 
 """
-    ABOUT_MESSAGE = """
+    ABOUT_MESSAGE ="""
 ╭───────────⍟
 ├📛 **Mʏ Nᴀᴍᴇ** : URL Uᴘʟᴏᴀᴅᴇʀ Bᴏᴛ
 ├📢 **Fʀᴀᴍᴇᴡᴏʀᴋ** : <a href=https://docs.pyrogram.org/>PʏʀᴏBʟᴀᴄᴋ 2.7.4</a>

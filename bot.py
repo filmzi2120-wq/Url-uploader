@@ -1,4 +1,4 @@
-import os
+Import os
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
@@ -46,7 +46,7 @@ def get_remaining_time(user_id):
     remaining = COOLDOWN_TIME - elapsed
     
     if remaining <= 0:
-        del user_cooldowns[user_id]
+        del user_cooldowns[user_cooldowns]
         return 0
     
     return int(remaining)
@@ -67,13 +67,19 @@ async def start_command(client, message: Message):
     except Exception as e:
         print(f"Reaction failed: {e}")
     
+    # --- START: MODIFIED FOR TWO-MESSAGE WELCOME ---
+    
+    # 1. Send the first message confirming the command (similar to your friend's bot)
+    await message.reply_text("You Can Send Me New Task Now")
+    
+    # 2. Define the main welcome message (the large bubble)
     text = Config.START_MESSAGE.format(
         name=first_name,
         dev=Config.DEVELOPER,
         channel=Config.UPDATE_CHANNEL
     )
     
-    # Auto-filter style buttons
+    # Define the inline keyboard
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("📚 Help", callback_data="help"),
          InlineKeyboardButton("ℹ️ About", callback_data="about")],
@@ -82,7 +88,11 @@ async def start_command(client, message: Message):
         [InlineKeyboardButton("📢 Updates Channel", url=Config.UPDATE_CHANNEL)]
     ])
     
+    # 3. Send the main welcome message with buttons
     await message.reply_text(text, reply_markup=keyboard, disable_web_page_preview=True)
+    
+    # --- END: MODIFIED FOR TWO-MESSAGE WELCOME ---
+
 
 # Help command - Shows everything in one message
 @app.on_callback_query(filters.regex("^help$"))
@@ -278,6 +288,7 @@ async def back_start(client, callback: CallbackQuery):
         [InlineKeyboardButton("📢 Updates Channel", url=Config.UPDATE_CHANNEL)]
     ])
     
+    # Use edit_text to update the message containing the buttons
     await callback.message.edit_text(text, reply_markup=keyboard, disable_web_page_preview=True)
 
 # Handle file upload type selection
@@ -773,3 +784,5 @@ if __name__ == "__main__":
     print(f"⏱️ Cooldown: {format_time(COOLDOWN_TIME)}")
     print("=" * 50)
     app.run()
+
+Don't change other

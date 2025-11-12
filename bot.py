@@ -216,22 +216,17 @@ async def status_callback(client, callback: CallbackQuery):
     user_data = await db.get_user(user_id)
     
     if user_data:
-        text = f"""📊 **Your Statistics**
+        text = f"""📊 **ʏᴏᴜʀ sᴛᴀᴛɪsᴛɪᴄs**
 
-👤 **User Info:**
-• ID: `{user_id}`
-• Username: @{user_data.get('username', 'N/A')}
-• Name: {user_data.get('first_name', 'N/A')}
+👤 **ᴜsᴇʀ ɪɴғᴏ:**
+• ɪᴅ: `{user_id}`
+• ᴜsᴇʀɴᴀᴍᴇ: @{user_data.get('username', 'N/A')}
+• ɴᴀᴍᴇ: {user_data.get('first_name', 'N/A')}
 
-📈 **Usage Stats:**
-• Total Downloads: {user_data.get('total_downloads', 0)}
-• Total Uploads: {user_data.get('total_uploads', 0)}
-• Member since: {user_data.get('joined_date').strftime('%Y-%m-%d')}
-
-⚡ **Bot Info:**
-• Speed: 500 MB/s
-• Max size: 4 GB
-• Status: ✅ Online"""
+📈 **ᴜsᴀɢᴇ sᴛᴀᴛs:**
+• ᴛᴏᴛᴀʟ ᴅᴏᴡɴʟᴏᴀᴅs: {user_data.get('total_downloads', 0)}
+• ᴛᴏᴛᴀʟ ᴜᴘʟᴏᴀᴅs: {user_data.get('total_uploads', 0)}
+• ᴍᴇᴍʙᴇʀ sɪɴᴄᴇ: {user_data.get('joined_date').strftime('%Y-%m-%d')}"""
     else:
         text = "No data found. Start using the bot!"
     
@@ -247,22 +242,17 @@ async def status_command(client, message: Message):
     user_data = await db.get_user(user_id)
     
     if user_data:
-        text = f"""📊 **Your Statistics**
+        text = f"""📊 **ʏᴏᴜʀ sᴛᴀᴛɪsᴛɪᴄs**
 
-👤 **User Info:**
-• ID: `{user_id}`
-• Username: @{user_data.get('username', 'N/A')}
-• Name: {user_data.get('first_name', 'N/A')}
+👤 **ᴜsᴇʀ ɪɴғᴏ:**
+• ɪᴅ: `{user_id}`
+• ᴜsᴇʀɴᴀᴍᴇ: @{user_data.get('username', 'N/A')}
+• ɴᴀᴍᴇ: {user_data.get('first_name', 'N/A')}
 
-📈 **Usage Stats:**
-• Total Downloads: {user_data.get('total_downloads', 0)}
-• Total Uploads: {user_data.get('total_uploads', 0)}
-• Member since: {user_data.get('joined_date').strftime('%Y-%m-%d')}
-
-⚡ **Bot Info:**
-• Speed: 500 MB/s
-• Max size: 4 GB
-• Status: ✅ Online"""
+📈 **ᴜsᴀɢᴇ sᴛᴀᴛs:**
+• ᴛᴏᴛᴀʟ ᴅᴏᴡɴʟᴏᴀᴅs: {user_data.get('total_downloads', 0)}
+• ᴛᴏᴛᴀʟ ᴜᴘʟᴏᴀᴅs: {user_data.get('total_uploads', 0)}
+• ᴍᴇᴍʙᴇʀ sɪɴᴄᴇ: {user_data.get('joined_date').strftime('%Y-%m-%d')}"""
     else:
         text = "No data found!"
     

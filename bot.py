@@ -6,7 +6,7 @@ from pyrogram.enums import ParseMode
 from config import Config
 from database import db
 from downloader import downloader
-from helpers import Progress, humanbytes, is_url, is_magnet
+from helpers import Progress, humanbytes, is_url, is_magnet, create_video_thumbnail, fix_video_metadata
 import time
 import random
 
@@ -295,10 +295,13 @@ async def handle_upload_type(client, callback: CallbackQuery):
     
     await callback.message.edit_text("⬆️ **Uploading to Telegram...**\n\nPlease wait...")
     
+    # Track generated thumbnail path for later cleanup
+    generated_thumb_path = None 
+    
     try:
         # Get user settings
         settings = user_settings.get(user_id, {})
-        thumbnail = settings.get('thumbnail')
+        thumbnail = settings.get('thumbnail') # Custom thumbnail path
         
         filename = os.path.basename(filepath)
         filesize = os.path.getsize(filepath) if os.path.isfile(filepath) else 0
@@ -360,6 +363,18 @@ async def handle_upload_type(client, callback: CallbackQuery):
                 except:
                     pass
                 
+                # --- START: ASPECT RATIO FIX (Automatic Thumbnail Generation) ---
+                # Generate a ratio-preserving thumbnail if the user hasn't set a custom one
+                if not thumbnail and width > 0 and height > 0:
+                    generated_thumb_path = os.path.join(Config.DOWNLOAD_DIR, f"temp_thumb_{user_id}_{time.time()}.jpg")
+                    
+                    if await create_video_thumbnail(filepath, generated_thumb_path, width, height):
+                        thumbnail = generated_thumb_path
+                        print(f"[DEBUG] Generated ratio-preserving thumbnail: {generated_thumb_path}")
+                    else:
+                        print(f"[DEBUG] Thumbnail generation failed. Proceeding without one.")
+                # --- END: ASPECT RATIO FIX ---
+
                 await client.send_video(
                     chat_id=callback.message.chat.id,
                     video=filepath,
@@ -424,6 +439,9 @@ async def handle_upload_type(client, callback: CallbackQuery):
     
     finally:
         downloader.cleanup(filepath)
+        if generated_thumb_path: # Clean up generated thumbnail
+            downloader.cleanup(generated_thumb_path)
+            
         if user_id in user_tasks:
             del user_tasks[user_id]
 
@@ -493,7 +511,7 @@ async def handle_rename_callback(client, callback: CallbackQuery):
     user_id = callback.from_user.id
     
     if user_id not in user_tasks:
-        await callback.answer("⚠️ Task expired!", show_alert=True)
+        await callback.answer("⚠️ Task expired! Send URL again.", show_alert=True)
         return
     
     if data == "rename_now":
@@ -622,6 +640,9 @@ async def process_download(client, message: Message, url):
     # Start download
     status_msg = await message.reply_text("🔄 **Processing your request...**\n\nStarting download...")
     
+    # Initialize filepath variable early
+    filepath = None
+    
     try:
         # Download with progress
         progress = Progress(client, status_msg)
@@ -630,6 +651,26 @@ async def process_download(client, message: Message, url):
         if error:
             await status_msg.edit_text(f"❌ **Error:** {error}\n\nPlease check the URL and try again.")
             return
+        
+        # --- START: VIDEO METADATA FIX ---
+        if filepath and filepath.lower().endswith(('.mp4', '.mkv', '.webm', '.mov')):
+            await status_msg.edit_text("⚙️ **Optimizing video metadata...**\n\nFixing rotation and aspect ratio...")
+            
+            # Create a temporary output path for the corrected file
+            corrected_path = f"{filepath}.fixed.mp4" 
+            
+            new_filepath = await fix_video_metadata(filepath, corrected_path)
+            
+            if new_filepath:
+                # Replace original file with the corrected one
+                try:
+                    os.remove(filepath)
+                except Exception as e:
+                    print(f"Error cleaning up old file during metadata fix: {e}")
+                filepath = new_filepath
+            # else: Metadata fix failed, continue with original file
+        # --- END: VIDEO METADATA FIX ---
+
         
         await db.update_stats(user_id, download=True)
         await db.log_action(user_id, "download", str(url) if isinstance(url, str) else "torrent")
@@ -675,6 +716,10 @@ async def process_download(client, message: Message, url):
             pass
             
     except Exception as e:
+        # Ensure cleanup runs even on error if filepath was set
+        if filepath:
+            downloader.cleanup(filepath)
+            
         await status_msg.edit_text(f"❌ **Error:** {str(e)}\n\nSomething went wrong. Please try again.")
         await db.log_action(user_id, "error", str(e))
 

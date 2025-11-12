@@ -1,6 +1,7 @@
 import time
 import asyncio
 import math
+import os
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -460,3 +461,65 @@ def cleanup_temp_files(directory, pattern="*.tmp"):
         return len(temp_files)
     except Exception:
         return 0
+
+async def fix_video_metadata(input_path, output_path):
+    """
+    Fix video metadata to ensure correct rotation and aspect ratio,
+    without re-encoding the main video stream if possible.
+    """
+    if not os.path.exists(input_path):
+        return None
+
+    # This command uses the copy codec (-c copy) to avoid re-encoding the video,
+    # and explicitly removes the 'rotate' and 'display_aspect_ratio' tags,
+    # ensuring the original video stream's dimensions are respected by players.
+    command = (
+        f"ffmpeg -i '{input_path}' -c copy -map_metadata -1 "
+        f"-metadata:s:v rotate=0 -metadata:s:v:0 rotation=0 "
+        f"-movflags +faststart -y '{output_path}'"
+    )
+
+    returncode, stdout, stderr = await run_command(command)
+    
+    if returncode == 0 and os.path.exists(output_path):
+        return output_path
+    else:
+        print(f"FFMPEG Metadata Fix Error: {stderr}")
+        return None
+
+async def create_video_thumbnail(video_path, thumbnail_path, width, height):
+    """
+    Generate a thumbnail from video using ffmpeg, preserving aspect ratio.
+    The thumbnail will be constrained to a max size (e.g., max 320px wide or high).
+    """
+    if not os.path.exists(video_path) or width <= 0 or height <= 0:
+        return False
+
+    # Ffmpeg requires width and height to be even numbers for some formats,
+    # and we target a maximum dimension of 320px for Telegram thumbnails.
+    
+    # Calculate scale filter to ensure max dimension is 320 while keeping ratio
+    # If video is horizontal (width >= height), scale width to 320 and height automatically (-1)
+    if width >= height:
+        scale_filter = "scale=320:-1"
+    # If video is vertical (height > width), scale height to 320 and width automatically (-1)
+    else:
+        scale_filter = "scale=-1:320"
+        
+    # Add format pixel correction filter to ensure compatibility
+    scale_filter += ":force_original_aspect_ratio=increase:flags=bicubic,pad=ceil(iw/2)*2:ceil(ih/2)*2"
+
+
+    # Ffmpeg command to seek to 1 second, capture one frame, apply scaling, and overwrite
+    command = (
+        f"ffmpeg -i '{video_path}' -ss 00:00:01.000 -vframes 1 -f image2 -pix_fmt yuv420p "
+        f"-vf \"{scale_filter}\" -y '{thumbnail_path}'"
+    )
+    
+    returncode, stdout, stderr = await run_command(command)
+    
+    if returncode == 0 and os.path.exists(thumbnail_path):
+        return True
+    else:
+        print(f"FFMPEG Thumbnail Error: {stderr}")
+        return False

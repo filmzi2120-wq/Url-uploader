@@ -85,8 +85,6 @@ class Downloader:
                                 last_update = current_time
                                 speed = downloaded / (current_time - start_time) / (1024 * 1024)
                                 await progress_callback(downloaded, total_size, f"Downloading ({speed:.1f} MB/s)")
-                            
-                            # No artificial delays for maximum speed
                     
                     return filepath, None
                     
@@ -110,9 +108,9 @@ class Downloader:
                 'writethumbnail': False,
                 'no_post_overwrites': True,
                 # Speed optimizations
-                'concurrent_fragment_downloads': 5,  # Download multiple fragments simultaneously
-                'buffer_size': 16384,  # 16 KB buffer
-                'http_chunk_size': 10485760,  # 10 MB chunks
+                'concurrent_fragment_downloads': 5,
+                'buffer_size': 16384,
+                'http_chunk_size': 10485760,
                 # Enhanced headers for TikTok and better compatibility
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -133,13 +131,13 @@ class Downloader:
                 'retries': 15,
                 'fragment_retries': 15,
                 'skip_unavailable_fragments': True,
-                'keepvideo': False,  # Don't keep separate video/audio files
+                'keepvideo': False,
                 # Network optimizations
                 'socket_timeout': 30,
                 'source_address': '0.0.0.0',
                 # Postprocessing optimizations
                 'postprocessor_args': {
-                    'ffmpeg': ['-threads', '4']  # Use 4 threads for ffmpeg
+                    'ffmpeg': ['-threads', '4']
                 }
             }
             
@@ -179,26 +177,33 @@ class Downloader:
     
     async def download_torrent(self, magnet_or_file, progress_callback=None):
         """Download torrent using libtorrent with optimized settings"""
+        ses = None
+        handle = None
         try:
-            # Create session with optimized settings
-            ses = lt.session()
-            ses.listen_on(6881, 6891)
+            print("Initializing torrent session...")
             
-            # Apply speed optimizations
+            # Create session with settings
             settings = {
-                'download_rate_limit': 0,  # Unlimited
-                'upload_rate_limit': 1024 * 100,  # Limit upload to 100 KB/s
+                'enable_dht': True,
+                'enable_lsd': True,
+                'enable_upnp': True,
+                'enable_natpmp': True,
+                'listen_interfaces': '0.0.0.0:6881',
+                'download_rate_limit': 0,
+                'upload_rate_limit': 102400,
                 'connections_limit': 200,
-                'active_downloads': 10,
-                'active_seeds': 5,
-                'max_failcount': 1,
-                'request_timeout': 10,
-                'peer_connect_timeout': 10,
-                'read_cache_line_size': 256,
-                'write_cache_line_size': 256,
                 'alert_queue_size': 2000,
             }
-            ses.apply_settings(settings)
+            
+            ses = lt.session(settings)
+            
+            # Add DHT routers for better peer discovery
+            ses.add_dht_router("router.utorrent.com", 6881)
+            ses.add_dht_router("router.bittorrent.com", 6881)
+            ses.add_dht_router("dht.transmissionbt.com", 6881)
+            ses.add_dht_router("router.bitcomet.com", 6881)
+            
+            print("Session created, adding torrent...")
             
             params = {
                 'save_path': self.torrent_dir,
@@ -208,61 +213,134 @@ class Downloader:
             # Check if it's a magnet link or file
             if magnet_or_file.startswith('magnet:'):
                 handle = lt.add_magnet_uri(ses, magnet_or_file, params)
+                print("✓ Magnet link added")
             else:
                 # It's a torrent file path
                 if not os.path.exists(magnet_or_file):
                     return None, "Torrent file not found"
                 info = lt.torrent_info(magnet_or_file)
                 handle = ses.add_torrent({'ti': info, 'save_path': self.torrent_dir})
+                print("✓ Torrent file added")
+            
+            print("⏳ Waiting for metadata...")
+            if progress_callback:
+                await progress_callback(0, 100, "Connecting to peers...")
             
             # Wait for metadata with timeout
-            metadata_timeout = 60  # 60 seconds
+            metadata_timeout = 120
             start = time.time()
+            
             while not handle.has_metadata():
                 if time.time() - start > metadata_timeout:
-                    ses.remove_torrent(handle)
-                    return None, "Timeout waiting for torrent metadata"
-                await asyncio.sleep(0.5)
+                    if ses and handle:
+                        ses.remove_torrent(handle)
+                    return None, "⚠️ Timeout waiting for metadata. Magnet link may be dead or no peers available."
+                
+                # Process alerts for errors
+                alerts = ses.pop_alerts()
+                for alert in alerts:
+                    alert_type = type(alert).__name__
+                    if 'error' in alert_type.lower():
+                        print(f"❌ Alert: {alert}")
+                        if ses and handle:
+                            ses.remove_torrent(handle)
+                        return None, f"Torrent error: {alert}"
+                
+                s = handle.status()
+                peers = s.num_peers
+                
+                if progress_callback and int(time.time() - start) % 5 == 0:
+                    await progress_callback(0, 100, f"Finding peers... ({peers} connected)")
+                
+                await asyncio.sleep(1)
             
+            print("✓ Metadata received!")
             info = handle.get_torrent_info()
             name = info.name()
+            total_size = info.total_size()
+            
+            print(f"📦 Downloading: {name}")
+            print(f"📊 Size: {total_size / (1024*1024):.2f} MB")
+            
+            # Check file size limit
+            if total_size > Config.MAX_FILE_SIZE:
+                ses.remove_torrent(handle)
+                return None, f"❌ Torrent size ({total_size / (1024*1024*1024):.2f} GB) exceeds 4GB limit"
+            
+            if progress_callback:
+                await progress_callback(0, total_size, "Starting download...")
             
             # Download with progress updates
             last_progress = -1
+            stalled_time = 0
+            last_downloaded = 0
+            
             while not handle.is_seed():
                 s = handle.status()
                 
+                # Check for stalled download
+                if s.total_done == last_downloaded:
+                    stalled_time += 1
+                    if stalled_time > 180:  # 3 minutes stalled
+                        ses.remove_torrent(handle)
+                        return None, "❌ Download stalled - no data received for 3 minutes"
+                else:
+                    stalled_time = 0
+                    last_downloaded = s.total_done
+                
                 progress = s.progress * 100
                 download_rate = s.download_rate / 1024 / 1024  # MB/s
+                upload_rate = s.upload_rate / 1024 / 1024
                 
-                # Only update if progress changed significantly
+                # Update progress
                 if progress_callback and abs(progress - last_progress) >= 1:
                     last_progress = progress
+                    status_msg = f"↓ {download_rate:.1f} MB/s | ↑ {upload_rate:.1f} MB/s | {s.num_peers} peers | {progress:.1f}%"
                     await progress_callback(
                         int(s.total_done),
                         int(s.total_wanted),
-                        f"Torrenting ({download_rate:.2f} MB/s, {progress:.1f}%)"
+                        status_msg
                     )
+                
+                # Process alerts for errors
+                alerts = ses.pop_alerts()
+                for alert in alerts:
+                    alert_type = type(alert).__name__
+                    if 'error' in alert_type.lower():
+                        print(f"❌ Alert during download: {alert}")
                 
                 # Check if torrent has error
                 if s.error:
                     ses.remove_torrent(handle)
-                    return None, f"Torrent error: {s.error}"
+                    return None, f"❌ Torrent error: {s.error}"
                 
                 await asyncio.sleep(1)
             
+            print("✓ Download complete!")
+            
             # Get downloaded file path
-            filepath = os.path.join(self.torrent_dir, name)
+            files = info.files()
+            if info.num_files() == 1:
+                filepath = os.path.join(self.torrent_dir, files.file_path(0))
+            else:
+                filepath = os.path.join(self.torrent_dir, name)
             
             # Stop seeding
             ses.remove_torrent(handle)
             
             if os.path.exists(filepath):
+                print(f"✓ File saved: {filepath}")
                 return filepath, None
             else:
-                return None, "Downloaded file not found"
+                return None, "❌ Downloaded file not found"
             
         except Exception as e:
+            print(f"❌ Exception: {e}")
+            if ses and handle:
+                try:
+                    ses.remove_torrent(handle)
+                except:
+                    pass
             return None, f"Torrent error: {str(e)}"
     
     async def download(self, url_or_file, filename=None, progress_callback=None):

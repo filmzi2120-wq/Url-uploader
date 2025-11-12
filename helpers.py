@@ -1,4 +1,4 @@
-Import time
+import time
 import asyncio
 import math
 from typing import Optional
@@ -460,6 +460,3 @@ def cleanup_temp_files(directory, pattern="*.tmp"):
         return len(temp_files)
     except Exception:
         return 0
-
-
-Helper.py

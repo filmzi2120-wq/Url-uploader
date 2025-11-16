@@ -1,5 +1,6 @@
 import os
 import sys
+import subprocess
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
@@ -166,6 +167,8 @@ async def restart_command(client, message: Message):
             f"🔄 **Restarting now...**"
         )
         
+        await asyncio.sleep(1)
+        
         # Cleanup before restart
         for user_id, task in list(user_tasks.items()):
             filepath = task.get('filepath')
@@ -176,11 +179,12 @@ async def restart_command(client, message: Message):
                     pass
         user_tasks.clear()
         
-        # Small delay to ensure message is sent
-        await asyncio.sleep(1)
+        # Restart using subprocess (non-blocking)
+        import subprocess
+        subprocess.Popen([sys.executable] + sys.argv)
         
-        # Restart the bot using os.execl (replaces current process)
-        os.execl(sys.executable, sys.executable, *sys.argv)
+        # Exit current process
+        sys.exit(0)
         
     except Exception as e:
         await restart_msg.edit_text(

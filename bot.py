@@ -14,7 +14,6 @@ from helpers import (
 )  
 import time  
 import random  
-import libs  
   
 # Initialize bot  
 app = Client(  
@@ -68,7 +67,7 @@ def add_reaction(message):
         chat_id = str(message.chat.id)
 
         a = ["❤️","🥰","🔥","💋","😍","😘","☺️"]
-        b = libs.Random.randomStr(1, a)
+        b = random.choice(a)  # Use standard random instead of libs
 
         # Your custom reaction method
         bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=ReactionType(type="emoji", emoji=b), is_big=True)

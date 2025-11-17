@@ -6,6 +6,7 @@ import random
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 from pyrogram.enums import ParseMode, ReactionType
+from pyrogram.raw import types
 from config import Config
 from database import db
 from downloader import downloader
@@ -63,24 +64,30 @@ class ReturnCommand(Exception):
     """Custom exception to skip processing for media groups"""
     pass
 
-async def set_message_reaction(message: Message):
-    """Set random reaction to a message"""
+async def set_message_reaction(client: Client, message: Message):
+    """Set random reaction to a message using raw API"""
     try:
         # Skip if it's a media group
         if message.media_group_id:
             raise ReturnCommand
         
-        message_id = message.id
-        chat_id = message.chat.id
-        
         # Choose random emoji
         reaction_emoji = random.choice(REACTION_EMOJIS)
         
-        # Set reaction
-        await message.react(emoji=reaction_emoji, big=True)
+        # Use raw API to set reaction
+        await client.invoke(
+            types.messages.SendReaction(
+                peer=await client.resolve_peer(message.chat.id),
+                msg_id=message.id,
+                reaction=[types.ReactionEmoji(emoticon=reaction_emoji)]
+            )
+        )
+        
+        print(f"✅ Reaction set: {reaction_emoji} for message {message.id}")
         
     except Exception as e:
-        # Ignore reaction errors
+        # Ignore reaction errors, but log them
+        print(f"Reaction error: {e}")
         pass
 
 # Start command - Auto-filter style with image (REPLY TO USER MESSAGE)
@@ -122,7 +129,7 @@ async def start_command(client, message: Message):
         )
     
     # Set reaction to the user's start message
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Restart command (OWNER ONLY) - Restarts bot and broadcasts notification
 @app.on_message(filters.command("restart") & filters.user(Config.OWNER_ID))
@@ -184,7 +191,7 @@ async def restart_command(client, message: Message):
         )
     
     # Set reaction to the restart command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Help command
 @app.on_callback_query(filters.regex("^help$"))
@@ -217,7 +224,7 @@ async def help_command(client, message: Message):
     await message.reply_text(text, reply_markup=keyboard, disable_web_page_preview=True)
     
     # Set reaction to the help command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # About command
 @app.on_callback_query(filters.regex("^about$"))
@@ -252,7 +259,7 @@ async def about_command(client, message: Message):
     await message.reply_text(text, reply_markup=keyboard, disable_web_page_preview=True)
     
     # Set reaction to the about command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Settings menu
 @app.on_callback_query(filters.regex("^settings$"))
@@ -314,7 +321,7 @@ async def settings_command(client, message: Message):
     await message.reply_text(text, reply_markup=keyboard)
     
     # Set reaction to the settings command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Status command
 @app.on_callback_query(filters.regex("^status$"))
@@ -376,7 +383,7 @@ async def status_command(client, message: Message):
     await message.reply_text(text)
     
     # Set reaction to the status command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Back to start
 @app.on_callback_query(filters.regex("^back_start$"))
@@ -398,7 +405,7 @@ async def back_start(client, callback: CallbackQuery):
     
     # Try to edit caption first, fallback to text
     try:
-        await callback.message.edit_caption(caption=text, reply_markup=keyboard)
+        await callback.message.edit_caption(caption=text, reply_mup=keyboard)
     except Exception:
         try:
             await callback.message.edit_text(text, reply_markup=keyboard)
@@ -690,7 +697,7 @@ async def handle_text_input(client, message: Message):
     url = message.text.strip()
     if not (is_url(url) or is_magnet(url)):
         # Set reaction for non-URL messages (regular text)
-        await set_message_reaction(message)
+        await set_message_reaction(client, message)
         return
     
     # Check cooldown
@@ -735,7 +742,7 @@ async def handle_document(client, message: Message):
         await handle_direct_file_upload(client, message)
     
     # Set reaction for document messages
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Handle any video files sent directly
 @app.on_message(filters.video & filters.private)
@@ -755,7 +762,7 @@ async def handle_video(client, message: Message):
     await handle_direct_file_upload(client, message)
     
     # Set reaction for video messages
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Handle any audio files sent directly
 @app.on_message(filters.audio & filters.private)
@@ -775,7 +782,7 @@ async def handle_audio(client, message: Message):
     await handle_direct_file_upload(client, message)
     
     # Set reaction for audio messages
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Handle direct file uploads (not downloads)
 async def handle_direct_file_upload(client, message: Message):
@@ -938,7 +945,7 @@ async def setname_command(client, message: Message):
     await message.reply_text(f"✅ **Filename set to:** `{filename}`")
     
     # Set reaction to the setname command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 @app.on_message(filters.command("setcaption") & filters.private)
 async def setcaption_command(client, message: Message):
@@ -958,7 +965,7 @@ async def setcaption_command(client, message: Message):
     await message.reply_text("✅ **Caption set successfully!**")
     
     # Set reaction to the setcaption command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 @app.on_message(filters.command("clearsettings") & filters.private)
 async def clearsettings_command(client, message: Message):
@@ -968,7 +975,7 @@ async def clearsettings_command(client, message: Message):
     await message.reply_text("✅ **All settings cleared!**")
     
     # Set reaction to the clearsettings command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Thumbnail handler
 @app.on_message(filters.photo & filters.private)
@@ -999,7 +1006,7 @@ async def handle_thumbnail(client, message: Message):
         await status_msg.edit_text(f"❌ **Error:** {str(e)}")
     
     # Set reaction to the thumbnail photo
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Show thumbnail command
 @app.on_message(filters.command("showthumb") & filters.private)
@@ -1026,7 +1033,7 @@ async def showthumb_command(client, message: Message):
         )
     
     # Set reaction to the showthumb command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Delete thumbnail callback
 @app.on_callback_query(filters.regex("^delete_thumb$"))
@@ -1075,7 +1082,7 @@ async def total_command(client, message: Message):
     await message.reply_text(text)
     
     # Set reaction to the total command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Broadcast (owner only)
 @app.on_message(filters.command("broadcast") & filters.user(Config.OWNER_ID))
@@ -1132,7 +1139,7 @@ async def broadcast_command(client, message: Message):
     )
     
     # Set reaction to the broadcast command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Cancel command - Cancel current task
 @app.on_message(filters.command("cancel") & filters.private)
@@ -1161,7 +1168,7 @@ async def cancel_command(client, message: Message):
         )
     
     # Set reaction to the cancel command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Ping command - Check bot status
 @app.on_message(filters.command("ping") & filters.private)
@@ -1179,7 +1186,7 @@ async def ping_command(client, message: Message):
     )
     
     # Set reaction to the ping command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Error handler for unknown commands
 @app.on_message(filters.command(["unknown"]) & filters.private)
@@ -1190,14 +1197,14 @@ async def unknown_command(client, message: Message):
     )
     
     # Set reaction to the unknown command
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Generic message handler for all other messages (non-commands)
 @app.on_message(filters.private & ~filters.command & ~filters.text)
 async def handle_other_messages(client, message: Message):
     """Handle all other non-command, non-text messages"""
     # Set reaction for other types of messages
-    await set_message_reaction(message)
+    await set_message_reaction(client, message)
 
 # Startup message
 async def startup():

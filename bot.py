@@ -2,6 +2,7 @@ import os
 import sys  
 import subprocess  
 import asyncio  
+import random
 from pyrogram import Client, filters  
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery  
 from pyrogram.enums import ParseMode  
@@ -12,8 +13,7 @@ from helpers import (
     Progress, humanbytes, is_url, is_magnet,   
     is_video_file, get_file_extension, sanitize_filename  
 )  
-import time  
-import libs
+import time
 
 # For custom reactions
 class ReturnCommand(Exception):
@@ -78,30 +78,20 @@ async def add_reaction(message: Message):
     Add a random reaction to a message using custom method.
     """
     try:
-        # Check for media_group_id
         msgg = str(message)
         if 'media_group_id' in str(msgg):
             raise ReturnCommand
-        
         message_id = message.message_id
         chat_id = str(message.chat.id)
         
-        # Select random emoji from list
-        a = ["❤️", "🥰", "🔥", "💋", "😍", "😘", "☺️"]
-        b = random.choice(a)
+        a = ["❤️","🥰","🔥","💋","😍","😘","☺️"]
+        b = libs.Random.randomStr(1, a)
         
-        # Set reaction using custom bot method
-        await message._client.set_reaction(
-            chat_id=chat_id, 
-            message_id=message_id, 
-            reaction=[ReactionType(type="emoji", emoji=b)], 
-            is_big=True
-        )
+        app.set_reaction(chat_id=chat_id, message_id=message_id, reaction=ReactionType(type="emoji", emoji=b), is_big=True)
         
     except ReturnCommand:
         return
     except Exception as e:  
-        # Silently fail - reactions might not always work
         pass  
 
 # Start command - Auto-filter style with ANIMATED GIF (REPLY TO USER MESSAGE)  

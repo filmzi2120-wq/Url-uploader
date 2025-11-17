@@ -40,7 +40,7 @@ REACTION_EMOJIS = [
 ]
 
 # Welcome image URL
-WELCOME_IMAGE = "https://ar-hosting.pages.dev/1762658234858.jpg"
+WELCOME_IMAGE = "https://ar-hosting.pages.dev/1763361311440.mp4"
 
 def format_time(seconds):
     """Format seconds to minutes and seconds"""

@@ -90,7 +90,7 @@ async def add_reaction(message: Message):
         # print(f"Reaction failed: {e}")
         pass
 
-# Start command - Auto-filter style with image (REPLY TO USER MESSAGE)
+# Start command - Auto-filter style with ANIMATED GIF (REPLY TO USER MESSAGE)
 @app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message: Message):
     user_id = message.from_user.id
@@ -114,22 +114,32 @@ async def start_command(client, message: Message):
         [InlineKeyboardButton("📢 Updates Channel", url=Config.UPDATE_CHANNEL)]
     ])
     
-    # Send with photo AS REPLY to user's message
+    # Send with ANIMATED GIF AS REPLY to user's message
     try:
-        await message.reply_photo(
-            photo=WELCOME_IMAGE,
+        # Use send_animation instead of send_photo to keep GIF animated
+        await message.reply_animation(
+            animation=WELCOME_IMAGE,
             caption=text,
             reply_markup=keyboard,
             quote=True  # This makes it a reply with highlight
         )
-    except:
-        # Fallback if image fails
-        await message.reply_text(
-            text, 
-            reply_markup=keyboard, 
-            disable_web_page_preview=True,
-            quote=True  # This makes it a reply with highlight
-        )
+    except Exception as e:
+        # Fallback if animation fails - try as document
+        try:
+            await message.reply_document(
+                document=WELCOME_IMAGE,
+                caption=text,
+                reply_markup=keyboard,
+                quote=True
+            )
+        except:
+            # Final fallback - text only
+            await message.reply_text(
+                text, 
+                reply_markup=keyboard, 
+                disable_web_page_preview=True,
+                quote=True
+            )
 
 # Restart command (OWNER ONLY) - Restarts bot and broadcasts notification
 @app.on_message(filters.command("restart") & filters.user(Config.OWNER_ID))
@@ -380,7 +390,7 @@ async def status_command(client, message: Message):
     
     await message.reply_text(text)
 
-# Back to start
+# Back to start - FIXED to show animated GIF
 @app.on_callback_query(filters.regex("^back_start$"))
 async def back_start(client, callback: CallbackQuery):
     user_id = callback.from_user.id
@@ -398,15 +408,28 @@ async def back_start(client, callback: CallbackQuery):
         [InlineKeyboardButton("📢 Updates Channel", url=Config.UPDATE_CHANNEL)]
     ])
     
-    # Try to edit caption first, fallback to text
+    # Delete old message and send new one with animation to keep GIF animated
     try:
-        await callback.message.edit_caption(caption=text, reply_markup=keyboard)
-    except Exception:
+        await callback.message.delete()
+        
+        await client.send_animation(
+            chat_id=callback.message.chat.id,
+            animation=WELCOME_IMAGE,
+            caption=text,
+            reply_markup=keyboard
+        )
+        await callback.answer()
+        
+    except Exception as e:
+        # Fallback: try editing if deletion fails
         try:
-            await callback.message.edit_text(text, reply_markup=keyboard)
-        except Exception as e:
-            print(f"Error in back_start: {e}")
-            await callback.answer("Error going back. Use /start", show_alert=True)
+            await callback.message.edit_caption(caption=text, reply_markup=keyboard)
+        except Exception:
+            try:
+                await callback.message.edit_text(text, reply_markup=keyboard)
+            except Exception as e:
+                print(f"Error in back_start: {e}")
+                await callback.answer("Error going back. Use /start", show_alert=True)
 
 # Handle file upload type selection
 @app.on_callback_query(filters.regex("^upload_"))

@@ -2,7 +2,6 @@ import os
 import sys
 import subprocess
 import asyncio
-import random
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 from pyrogram.enums import ParseMode
@@ -14,6 +13,7 @@ from helpers import (
     is_video_file, get_file_extension, sanitize_filename
 )
 import time
+import random
 
 # Initialize bot
 app = Client(
@@ -31,11 +31,16 @@ user_cooldowns = {}
 # Cooldown settings
 COOLDOWN_TIME = 159  # 2 minutes 39 seconds
 
+# Random emojis for reactions (expanded list)
+REACTION_EMOJIS = [
+    "❤️", "🥰", "🔥", "💋", "😍", "😘", "☺️", 
+    "👍", "🎉", "👏", "⚡", "✨", "💯", "🚀",
+    "😂", "🤗", "😎", "🤩", "💪", "🙌", "💖",
+    "🌟", "😊", "💝", "🎊", "🥳", "😁", "💕"
+]
+
 # Welcome image URL
 WELCOME_IMAGE = "https://ar-hosting.pages.dev/1762658234858.jpg"
-
-# Reaction emojis (for logging only in this version)
-REACTION_EMOJIS = ["❤️", "🥰", "🔥", "💋", "😍", "😘", "☺️"]
 
 def format_time(seconds):
     """Format seconds to minutes and seconds"""
@@ -59,32 +64,30 @@ def get_remaining_time(user_id):
     
     return int(remaining)
 
-async def set_message_reaction(client: Client, message: Message):
-    """Set reaction indicator - Compatible version without ReactionType API"""
+async def add_reaction(message: Message):
+    """
+    Attempt to add a random reaction to a message.
+    NOTE: This will NOT work for bot accounts, only for userbots.
+    The function is included for compatibility if you convert to userbot later.
+    """
+    # Skip if media_group_id exists (albums/grouped media)
+    if message.media_group_id:
+        return
+    
     try:
-        # Skip if it's a media group
-        if message.media_group_id:
-            return
+        message_id = message.id
+        chat_id = message.chat.id
         
-        # Choose random emoji
-        reaction_emoji = random.choice(REACTION_EMOJIS)
+        # Select random emoji from list
+        random_emoji = random.choice(REACTION_EMOJIS)
         
-        # Log the reaction (since we can't set actual reactions in this version)
-        print(f"💫 Reaction indicator: {reaction_emoji} for message {message.id} from user {message.from_user.id}")
-        
-        # Alternative: Send a small reaction indicator that auto-deletes
-        try:
-            # Send reaction as a small message that gets deleted quickly
-            reaction_msg = await message.reply_text(f"{reaction_emoji}", quote=False)
-            # Delete the reaction message after 2 seconds
-            await asyncio.sleep(2)
-            await reaction_msg.delete()
-        except Exception as e:
-            print(f"Reaction message error: {e}")
+        # Attempt to react (will fail for bots)
+        await message.react(emoji=random_emoji, big=True)
         
     except Exception as e:
-        # Ignore any errors in reaction setting
-        print(f"Reaction error: {e}")
+        # Silently fail - reactions don't work for bots
+        # Uncomment below to see errors in logs
+        # print(f"Reaction failed: {e}")
         pass
 
 # Start command - Auto-filter style with image (REPLY TO USER MESSAGE)
@@ -95,6 +98,9 @@ async def start_command(client, message: Message):
     first_name = message.from_user.first_name
     
     await db.add_user(user_id, username, first_name)
+    
+    # Try to add reaction
+    await add_reaction(message)
     
     text = Config.START_MESSAGE.format(
         name=first_name,
@@ -124,13 +130,12 @@ async def start_command(client, message: Message):
             disable_web_page_preview=True,
             quote=True  # This makes it a reply with highlight
         )
-    
-    # Set reaction to the user's start message
-    await set_message_reaction(client, message)
 
 # Restart command (OWNER ONLY) - Restarts bot and broadcasts notification
 @app.on_message(filters.command("restart") & filters.user(Config.OWNER_ID))
 async def restart_command(client, message: Message):
+    await add_reaction(message)
+    
     restart_msg = await message.reply_text("🔄 **Restarting bot...**\n\nPlease wait...")
     
     try:
@@ -186,9 +191,6 @@ async def restart_command(client, message: Message):
             f"❌ **Restart Failed!**\n\n"
             f"**Error:** {str(e)}"
         )
-    
-    # Set reaction to the restart command
-    await set_message_reaction(client, message)
 
 # Help command
 @app.on_callback_query(filters.regex("^help$"))
@@ -209,6 +211,8 @@ async def help_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("help") & filters.private)
 async def help_command(client, message: Message):
+    await add_reaction(message)
+    
     text = Config.HELP_MESSAGE.format(
         dev=Config.DEVELOPER,
         channel=Config.UPDATE_CHANNEL
@@ -219,9 +223,6 @@ async def help_command(client, message: Message):
     ])
     
     await message.reply_text(text, reply_markup=keyboard, disable_web_page_preview=True)
-    
-    # Set reaction to the help command
-    await set_message_reaction(client, message)
 
 # About command
 @app.on_callback_query(filters.regex("^about$"))
@@ -243,6 +244,8 @@ async def about_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("about") & filters.private)
 async def about_command(client, message: Message):
+    await add_reaction(message)
+    
     text = Config.ABOUT_MESSAGE.format(
         dev=Config.DEVELOPER,
         channel=Config.UPDATE_CHANNEL
@@ -254,9 +257,6 @@ async def about_command(client, message: Message):
     ])
     
     await message.reply_text(text, reply_markup=keyboard, disable_web_page_preview=True)
-    
-    # Set reaction to the about command
-    await set_message_reaction(client, message)
 
 # Settings menu
 @app.on_callback_query(filters.regex("^settings$"))
@@ -290,6 +290,8 @@ async def settings_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("settings") & filters.private)
 async def settings_command(client, message: Message):
+    await add_reaction(message)
+    
     user_id = message.from_user.id
     settings = user_settings.get(user_id, {})
     
@@ -316,9 +318,6 @@ async def settings_command(client, message: Message):
     ])
     
     await message.reply_text(text, reply_markup=keyboard)
-    
-    # Set reaction to the settings command
-    await set_message_reaction(client, message)
 
 # Status command
 @app.on_callback_query(filters.regex("^status$"))
@@ -354,6 +353,8 @@ async def status_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("status") & filters.private)
 async def status_command(client, message: Message):
+    await add_reaction(message)
+    
     user_id = message.from_user.id
     user_data = await db.get_user(user_id)
     
@@ -378,9 +379,6 @@ async def status_command(client, message: Message):
         text = "No data found!"
     
     await message.reply_text(text)
-    
-    # Set reaction to the status command
-    await set_message_reaction(client, message)
 
 # Back to start
 @app.on_callback_query(filters.regex("^back_start$"))
@@ -656,6 +654,9 @@ async def handle_rename_callback(client, callback: CallbackQuery):
 async def handle_text_input(client, message: Message):
     user_id = message.from_user.id
     
+    # Try to add reaction
+    await add_reaction(message)
+    
     # Check if waiting for rename
     if user_id in user_tasks and user_tasks[user_id].get('waiting_rename'):
         new_name = sanitize_filename(message.text.strip())
@@ -693,8 +694,6 @@ async def handle_text_input(client, message: Message):
     # Check if it's a URL or magnet
     url = message.text.strip()
     if not (is_url(url) or is_magnet(url)):
-        # Set reaction for non-URL messages (regular text)
-        await set_message_reaction(client, message)
         return
     
     # Check cooldown
@@ -714,6 +713,9 @@ async def handle_text_input(client, message: Message):
 @app.on_message(filters.document & filters.private)
 async def handle_document(client, message: Message):
     user_id = message.from_user.id
+    
+    # Try to add reaction
+    await add_reaction(message)
     
     # Check cooldown
     remaining = get_remaining_time(user_id)
@@ -737,15 +739,15 @@ async def handle_document(client, message: Message):
     else:
         # Handle regular file upload
         await handle_direct_file_upload(client, message)
-    
-    # Set reaction for document messages
-    await set_message_reaction(client, message)
 
 # Handle any video files sent directly
 @app.on_message(filters.video & filters.private)
 async def handle_video(client, message: Message):
     user_id = message.from_user.id
     
+    # Try to add reaction
+    await add_reaction(message)
+    
     # Check cooldown
     remaining = get_remaining_time(user_id)
     if remaining > 0:
@@ -757,15 +759,15 @@ async def handle_video(client, message: Message):
         return
     
     await handle_direct_file_upload(client, message)
-    
-    # Set reaction for video messages
-    await set_message_reaction(client, message)
 
 # Handle any audio files sent directly
 @app.on_message(filters.audio & filters.private)
 async def handle_audio(client, message: Message):
     user_id = message.from_user.id
     
+    # Try to add reaction
+    await add_reaction(message)
+    
     # Check cooldown
     remaining = get_remaining_time(user_id)
     if remaining > 0:
@@ -777,9 +779,6 @@ async def handle_audio(client, message: Message):
         return
     
     await handle_direct_file_upload(client, message)
-    
-    # Set reaction for audio messages
-    await set_message_reaction(client, message)
 
 # Handle direct file uploads (not downloads)
 async def handle_direct_file_upload(client, message: Message):
@@ -926,6 +925,8 @@ async def process_download(client, message: Message, url):
 # Settings commands
 @app.on_message(filters.command("setname") & filters.private)
 async def setname_command(client, message: Message):
+    await add_reaction(message)
+    
     user_id = message.from_user.id
     if len(message.command) < 2:
         await message.reply_text(
@@ -940,12 +941,11 @@ async def setname_command(client, message: Message):
     user_settings[user_id]['filename'] = filename
     
     await message.reply_text(f"✅ **Filename set to:** `{filename}`")
-    
-    # Set reaction to the setname command
-    await set_message_reaction(client, message)
 
 @app.on_message(filters.command("setcaption") & filters.private)
 async def setcaption_command(client, message: Message):
+    await add_reaction(message)
+    
     user_id = message.from_user.id
     if len(message.command) < 2:
         await message.reply_text(
@@ -960,23 +960,21 @@ async def setcaption_command(client, message: Message):
     user_settings[user_id]['caption'] = caption
     
     await message.reply_text("✅ **Caption set successfully!**")
-    
-    # Set reaction to the setcaption command
-    await set_message_reaction(client, message)
 
 @app.on_message(filters.command("clearsettings") & filters.private)
 async def clearsettings_command(client, message: Message):
+    await add_reaction(message)
+    
     user_id = message.from_user.id
     if user_id in user_settings:
         user_settings[user_id] = {}
     await message.reply_text("✅ **All settings cleared!**")
-    
-    # Set reaction to the clearsettings command
-    await set_message_reaction(client, message)
 
 # Thumbnail handler
 @app.on_message(filters.photo & filters.private)
 async def handle_thumbnail(client, message: Message):
+    await add_reaction(message)
+    
     user_id = message.from_user.id
     
     status_msg = await message.reply_text("📥 Downloading thumbnail...")
@@ -1001,13 +999,12 @@ async def handle_thumbnail(client, message: Message):
         )
     except Exception as e:
         await status_msg.edit_text(f"❌ **Error:** {str(e)}")
-    
-    # Set reaction to the thumbnail photo
-    await set_message_reaction(client, message)
 
 # Show thumbnail command
 @app.on_message(filters.command("showthumb") & filters.private)
 async def showthumb_command(client, message: Message):
+    await add_reaction(message)
+    
     user_id = message.from_user.id
     settings = user_settings.get(user_id, {})
     
@@ -1028,9 +1025,6 @@ async def showthumb_command(client, message: Message):
             "❌ **No thumbnail set!**\n\n"
             "Send a photo to set as thumbnail."
         )
-    
-    # Set reaction to the showthumb command
-    await set_message_reaction(client, message)
 
 # Delete thumbnail callback
 @app.on_callback_query(filters.regex("^delete_thumb$"))
@@ -1056,6 +1050,8 @@ async def delete_thumb_callback(client, callback: CallbackQuery):
 # Total stats command (owner only)
 @app.on_message(filters.command("total") & filters.user(Config.OWNER_ID))
 async def total_command(client, message: Message):
+    await add_reaction(message)
+    
     stats = await db.get_stats()
     
     text = f"""📈 **Bot Statistics**
@@ -1077,13 +1073,12 @@ async def total_command(client, message: Message):
 **Updates:** {Config.UPDATE_CHANNEL}"""
     
     await message.reply_text(text)
-    
-    # Set reaction to the total command
-    await set_message_reaction(client, message)
 
 # Broadcast (owner only)
 @app.on_message(filters.command("broadcast") & filters.user(Config.OWNER_ID))
 async def broadcast_command(client, message: Message):
+    await add_reaction(message)
+    
     if not message.reply_to_message:
         await message.reply_text("❌ **Reply to a message to broadcast!**")
         return
@@ -1134,13 +1129,12 @@ async def broadcast_command(client, message: Message):
         f"👻 **Deleted:** {deleted}\n"
         f"📊 **Total:** {len(users)}"
     )
-    
-    # Set reaction to the broadcast command
-    await set_message_reaction(client, message)
 
 # Cancel command - Cancel current task
 @app.on_message(filters.command("cancel") & filters.private)
 async def cancel_command(client, message: Message):
+    await add_reaction(message)
+    
     user_id = message.from_user.id
     
     if user_id in user_tasks:
@@ -1163,13 +1157,12 @@ async def cancel_command(client, message: Message):
             "❌ **No active task to cancel!**\n\n"
             "Send a URL or magnet link to start downloading."
         )
-    
-    # Set reaction to the cancel command
-    await set_message_reaction(client, message)
 
 # Ping command - Check bot status
 @app.on_message(filters.command("ping") & filters.private)
 async def ping_command(client, message: Message):
+    await add_reaction(message)
+    
     start = time.time()
     reply = await message.reply_text("🏓 **Pinging...**")
     end = time.time()
@@ -1181,27 +1174,16 @@ async def ping_command(client, message: Message):
         f"⚡ **Response Time:** `{ms:.2f}ms`\n"
         f"✅ **Status:** Online"
     )
-    
-    # Set reaction to the ping command
-    await set_message_reaction(client, message)
 
 # Error handler for unknown commands
 @app.on_message(filters.command(["unknown"]) & filters.private)
 async def unknown_command(client, message: Message):
+    await add_reaction(message)
+    
     await message.reply_text(
         "❓ **Unknown command!**\n\n"
         "Use /help to see available commands."
     )
-    
-    # Set reaction to the unknown command
-    await set_message_reaction(client, message)
-
-# Generic message handler for all other messages (non-commands)
-@app.on_message(filters.private & ~filters.command() & ~filters.text)
-async def handle_other_messages(client, message: Message):
-    """Handle all other non-command, non-text messages"""
-    # Set reaction for other types of messages
-    await set_message_reaction(client, message)
 
 # Startup message
 async def startup():
@@ -1213,7 +1195,8 @@ async def startup():
             f"⚡ Speed: Up to 500 MB/s\n"
             f"💾 Max Size: 4 GB\n"
             f"⏱️ Cooldown: {format_time(COOLDOWN_TIME)}\n"
-            f"✅ Status: Online"
+            f"✅ Status: Online\n\n"
+            f"⚠️ **Note:** Reactions are enabled but will only work if converted to userbot."
         )
     except Exception as e:
         print(f"Startup notification failed: {e}")
@@ -1251,6 +1234,8 @@ if __name__ == "__main__":
     print(f"⚡ Speed: Up to 500 MB/s")
     print(f"💾 Max Size: 4 GB")
     print(f"⏱️ Cooldown: {format_time(COOLDOWN_TIME)}")
+    print(f"😊 Reactions: Enabled (28 emojis)")
+    print("⚠️  Note: Reactions won't work for bot accounts")
     print("=" * 60)
     
     try:

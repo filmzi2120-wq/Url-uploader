@@ -118,11 +118,12 @@ async def start_command(client, message: Message):
     try:
         # Use send_animation instead of send_photo to keep GIF animated
         await message.reply_animation(
-            animation=WELCOME_IMAGE,
-            caption=text,
-            reply_markup=keyboard,
-            quote=True  # This makes it a reply with highlight
-        )
+    animation=WELCOME_IMAGE,
+    caption=text,
+    reply_markup=keyboard,
+    parse_mode="html",  # Added to enable HTML formatting like <blockquote>
+    quote=True  # This makes it a reply with highlight
+)
     except Exception as e:
         # Fallback if animation fails - try as document
         try:

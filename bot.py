@@ -3,7 +3,7 @@ import sys
 import subprocess  
 import asyncio  
 from pyrogram import Client, filters  
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery, ReactionType  
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery  
 from pyrogram.enums import ParseMode  
 from config import Config  
 from database import db  
@@ -13,7 +13,16 @@ from helpers import (
     is_video_file, get_file_extension, sanitize_filename  
 )  
 import time  
-import random  
+import libs
+
+# For custom reactions
+class ReturnCommand(Exception):
+    pass
+
+class ReactionType:
+    def __init__(self, type, emoji):
+        self.type = type
+        self.emoji = emoji  
 
 # Initialize bot  
 app = Client(  
@@ -66,28 +75,31 @@ def get_remaining_time(user_id):
 
 async def add_reaction(message: Message):  
     """
-    Add a random reaction to a message using custom bot method.
+    Add a random reaction to a message using custom method.
     """
     try:
-        # Convert message to string to check for media_group_id
-        msgg = str(message)  
-        if 'media_group_id' in msgg:  
-            return  
+        # Check for media_group_id
+        msgg = str(message)
+        if 'media_group_id' in str(msgg):
+            raise ReturnCommand
         
-        message_id = message.id  
-        chat_id = str(message.chat.id)  
+        message_id = message.message_id
+        chat_id = str(message.chat.id)
         
-        # Select random emoji from list  
-        random_emoji = random.choice(REACTION_EMOJIS)  
+        # Select random emoji from list
+        a = ["❤️", "🥰", "🔥", "💋", "😍", "😘", "☺️"]
+        b = random.choice(a)
         
-        # Set reaction using bot method
+        # Set reaction using custom bot method
         await message._client.set_reaction(
             chat_id=chat_id, 
             message_id=message_id, 
-            reaction=[ReactionType(type="emoji", emoji=random_emoji)], 
+            reaction=[ReactionType(type="emoji", emoji=b)], 
             is_big=True
         )
         
+    except ReturnCommand:
+        return
     except Exception as e:  
         # Silently fail - reactions might not always work
         pass  
@@ -446,7 +458,7 @@ if __name__ == "__main__":
     print(f"⚡ Speed: Up to 500 MB/s")  
     print(f"💾 Max Size: 4 GB")  
     print(f"⏱️ Cooldown: {format_time(COOLDOWN_TIME)}")  
-    print(f"😊 Reactions: Enabled (28 emojis) - Custom Implementation")  
+    print(f"😊 Reactions: Enabled (Custom Implementation)")  
     print("=" * 60)  
     
     try:  

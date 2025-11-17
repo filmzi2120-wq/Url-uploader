@@ -40,9 +40,11 @@ class Config:
     TORRENT_SEED_TIME = 0  # Don't seed after download
     
     # Welcome message
-    START_MESSAGE = """ʜᴇʏ {name}**, 
-<blockquote>ɪ ᴀᴍ ᴛʜᴇ ᴍᴏsᴛ ᴘᴏᴡᴇʀғᴜʟ ᴀᴜᴛᴏ ᴜʀʟ ᴜᴘʟᴏᴀᴅᴇʀ ʙᴏᴛ ᴡɪᴛʜ ᴘʀᴇᴍɪᴜᴍ ғᴇᴀᴛᴜʀᴇs 🚀</blockquote>
-ɪ ᴄᴀɴ ᴜᴘʟᴏᴀᴅ ᴍᴏᴠɪᴇs ᴀɴᴅ ᴍᴏʀᴇ — ᴊᴜsᴛ ᴘᴀsᴛᴇ ᴀ ᴜʀʟ ᴏʀ ᴀ ᴍᴀɢɴᴇᴛ/ᴛᴏʀʀᴇɴᴛ ✨"""
+    START_MESSAGE = """Hey {name},
+
+> I am the most powerful auto URL uploader bot with premium features 🚀
+
+I can upload movies and more — just paste a URL or a magnet/torrent link ✨"""
     HELP_MESSAGE = """
 **Hᴏᴡ Tᴏ Usᴇ Tʜɪs Bᴏᴛ** 🤔
    

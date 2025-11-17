@@ -1197,7 +1197,7 @@ async def unknown_command(client, message: Message):
     await set_message_reaction(client, message)
 
 # Generic message handler for all other messages (non-commands)
-@app.on_message(filters.private & ~filters.command & ~filters.text)
+@app.on_message(filters.private & ~filters.command() & ~filters.text)
 async def handle_other_messages(client, message: Message):
     """Handle all other non-command, non-text messages"""
     # Set reaction for other types of messages

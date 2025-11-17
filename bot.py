@@ -5,8 +5,7 @@ import asyncio
 import random
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
-from pyrogram.enums import ParseMode, ReactionType
-from pyrogram.raw import types
+from pyrogram.enums import ParseMode
 from config import Config
 from database import db
 from downloader import downloader
@@ -35,7 +34,7 @@ COOLDOWN_TIME = 159  # 2 minutes 39 seconds
 # Welcome image URL
 WELCOME_IMAGE = "https://ar-hosting.pages.dev/1762658234858.jpg"
 
-# Reaction emojis
+# Reaction emojis (for logging only in this version)
 REACTION_EMOJIS = ["❤️", "🥰", "🔥", "💋", "😍", "😘", "☺️"]
 
 def format_time(seconds):
@@ -60,33 +59,31 @@ def get_remaining_time(user_id):
     
     return int(remaining)
 
-class ReturnCommand(Exception):
-    """Custom exception to skip processing for media groups"""
-    pass
-
 async def set_message_reaction(client: Client, message: Message):
-    """Set random reaction to a message using raw API"""
+    """Set reaction indicator - Compatible version without ReactionType API"""
     try:
         # Skip if it's a media group
         if message.media_group_id:
-            raise ReturnCommand
+            return
         
         # Choose random emoji
         reaction_emoji = random.choice(REACTION_EMOJIS)
         
-        # Use raw API to set reaction
-        await client.invoke(
-            types.messages.SendReaction(
-                peer=await client.resolve_peer(message.chat.id),
-                msg_id=message.id,
-                reaction=[types.ReactionEmoji(emoticon=reaction_emoji)]
-            )
-        )
+        # Log the reaction (since we can't set actual reactions in this version)
+        print(f"💫 Reaction indicator: {reaction_emoji} for message {message.id} from user {message.from_user.id}")
         
-        print(f"✅ Reaction set: {reaction_emoji} for message {message.id}")
+        # Alternative: Send a small reaction indicator that auto-deletes
+        try:
+            # Send reaction as a small message that gets deleted quickly
+            reaction_msg = await message.reply_text(f"{reaction_emoji}", quote=False)
+            # Delete the reaction message after 2 seconds
+            await asyncio.sleep(2)
+            await reaction_msg.delete()
+        except Exception as e:
+            print(f"Reaction message error: {e}")
         
     except Exception as e:
-        # Ignore reaction errors, but log them
+        # Ignore any errors in reaction setting
         print(f"Reaction error: {e}")
         pass
 
@@ -405,7 +402,7 @@ async def back_start(client, callback: CallbackQuery):
     
     # Try to edit caption first, fallback to text
     try:
-        await callback.message.edit_caption(caption=text, reply_mup=keyboard)
+        await callback.message.edit_caption(caption=text, reply_markup=keyboard)
     except Exception:
         try:
             await callback.message.edit_text(text, reply_markup=keyboard)

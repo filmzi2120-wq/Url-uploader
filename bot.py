@@ -56,23 +56,23 @@ def get_remaining_time(user_id):
       
     return int(remaining)
 
-def add_reaction(message):  
-    """Add reaction to message using your custom method"""  
+async def add_reaction(client, message):  
+    """Add reaction to message using Pyrogram send_reaction"""  
     try:
-        msgg = str(message)
-        if 'media_group_id' in str(msgg):
-            return
-            
-        message_id = message.message_id
-        chat_id = str(message.chat.id)
-
-        a = ["❤️","🥰","🔥","💋","😍","😘","☺️"]
-        b = random.choice(a)  # Use standard random instead of libs
-
-        # Your custom reaction method
-        bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=ReactionType(type="emoji", emoji=b), is_big=True)
+        # List of emojis to choose from
+        emojis = ["❤️", "🥰", "🔥", "💋", "😍", "😘", "☺️", "👏", "👍"]
+        chosen_emoji = random.choice(emojis)
+        
+        # Send the reaction
+        # Using the syntax from docs: await app.send_reaction(chat_id, message_id, "🔥")
+        await client.send_reaction(
+            chat_id=message.chat.id, 
+            message_id=message.id, 
+            emoji=chosen_emoji, 
+            big=True
+        )
     except Exception as e:
-        # Silently fail if reaction fails
+        # Silently fail if reaction fails (e.g., message deleted or reactions disabled)
         pass
 
 # Start command - Auto-filter style with ANIMATED GIF (REPLY TO USER MESSAGE)  
@@ -84,8 +84,8 @@ async def start_command(client, message: Message):
       
     await db.add_user(user_id, username, first_name)  
       
-    # Add reaction using your custom method
-    add_reaction(message)  
+    # Add reaction
+    await add_reaction(client, message)  
       
     text = Config.START_MESSAGE.format(  
         name=first_name,  
@@ -106,7 +106,7 @@ async def start_command(client, message: Message):
             animation=WELCOME_IMAGE,  
             caption=text,  
             reply_markup=keyboard,  
-            parse_mode="html",  # Added to enable HTML formatting like <blockquote>  
+            parse_mode=ParseMode.HTML,  
             quote=True  # This makes it a reply with highlight  
         )  
     except Exception as e:  
@@ -130,7 +130,7 @@ async def start_command(client, message: Message):
 # Restart command (OWNER ONLY) - Restarts bot and broadcasts notification  
 @app.on_message(filters.command("restart") & filters.user(Config.OWNER_ID))  
 async def restart_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     restart_msg = await message.reply_text("🔄 **Restarting bot...**\n\nPlease wait...")  
       
@@ -207,7 +207,7 @@ async def help_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("help") & filters.private)  
 async def help_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     text = Config.HELP_MESSAGE.format(  
         dev=Config.DEVELOPER,  
@@ -240,7 +240,7 @@ async def about_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("about") & filters.private)  
 async def about_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     text = Config.ABOUT_MESSAGE.format(  
         dev=Config.DEVELOPER,  
@@ -260,15 +260,11 @@ async def settings_callback(client, callback: CallbackQuery):
     user_id = callback.from_user.id  
     settings = user_settings.get(user_id, {})  
       
-    text = """⚙️ **Bot Settings**  
-  
-**Current Settings:**  
-• Custom filename: {}  
+    text = """⚙️ **Bot Settings** **Current Settings:** • Custom filename: {}  
 • Custom caption: {}  
 • Thumbnail: {}  
   
-**How to set:**  
-📝 Send `/setname <filename>` - Set custom filename  
+**How to set:** 📝 Send `/setname <filename>` - Set custom filename  
 💬 Send `/setcaption <text>` - Set custom caption  
 🖼️ Send a photo - Set as thumbnail  
 🗑️ Send `/clearsettings` - Clear all settings  
@@ -286,20 +282,16 @@ async def settings_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("settings") & filters.private)  
 async def settings_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     user_id = message.from_user.id  
     settings = user_settings.get(user_id, {})  
       
-    text = """⚙️ **Bot Settings**  
-  
-**Current Settings:**  
-• Custom filename: {}  
+    text = """⚙️ **Bot Settings** **Current Settings:** • Custom filename: {}  
 • Custom caption: {}  
 • Thumbnail: {}  
   
-**How to set:**  
-📝 Send `/setname <filename>` - Set custom filename  
+**How to set:** 📝 Send `/setname <filename>` - Set custom filename  
 💬 Send `/setcaption <text>` - Set custom caption  
 🖼️ Send a photo - Set as thumbnail  
 🗑️ Send `/clearsettings` - Clear all settings  
@@ -322,20 +314,15 @@ async def status_callback(client, callback: CallbackQuery):
     user_data = await db.get_user(user_id)  
       
     if user_data:  
-        text = f"""📊 **Your Statistics**  
-  
-👤 **User Info:**  
-• ID: `{user_id}`  
+        text = f"""📊 **Your Statistics** 👤 **User Info:** • ID: `{user_id}`  
 • Username: @{user_data.get('username', 'N/A')}  
 • Name: {user_data.get('first_name', 'N/A')}  
   
-📈 **Usage Stats:**  
-• Total Downloads: {user_data.get('total_downloads', 0)}  
+📈 **Usage Stats:** • Total Downloads: {user_data.get('total_downloads', 0)}  
 • Total Uploads: {user_data.get('total_uploads', 0)}  
 • Member since: {user_data.get('joined_date').strftime('%Y-%m-%d')}  
   
-⚡ **Bot Info:**  
-• Speed: Up to 500 MB/s  
+⚡ **Bot Info:** • Speed: Up to 500 MB/s  
 • Max size: 4 GB  
 • Status: ✅ Online"""  
     else:  
@@ -349,26 +336,21 @@ async def status_callback(client, callback: CallbackQuery):
 
 @app.on_message(filters.command("status") & filters.private)  
 async def status_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     user_id = message.from_user.id  
     user_data = await db.get_user(user_id)  
       
     if user_data:  
-        text = f"""📊 **Your Statistics**  
-  
-👤 **User Info:**  
-• ID: `{user_id}`  
+        text = f"""📊 **Your Statistics** 👤 **User Info:** • ID: `{user_id}`  
 • Username: @{user_data.get('username', 'N/A')}  
 • Name: {user_data.get('first_name', 'N/A')}  
   
-📈 **Usage Stats:**  
-• Total Downloads: {user_data.get('total_downloads', 0)}  
+📈 **Usage Stats:** • Total Downloads: {user_data.get('total_downloads', 0)}  
 • Total Uploads: {user_data.get('total_uploads', 0)}  
 • Member since: {user_data.get('joined_date').strftime('%Y-%m-%d')}  
   
-⚡ **Bot Info:**  
-• Speed: Up to 500 MB/s  
+⚡ **Bot Info:** • Speed: Up to 500 MB/s  
 • Max size: 4 GB  
 • Status: ✅ Online"""  
     else:  
@@ -663,8 +645,8 @@ async def handle_rename_callback(client, callback: CallbackQuery):
 async def handle_text_input(client, message: Message):  
     user_id = message.from_user.id  
       
-    # Add reaction using your custom method
-    add_reaction(message)  
+    # Add reaction
+    await add_reaction(client, message)  
       
     # Check if waiting for rename  
     if user_id in user_tasks and user_tasks[user_id].get('waiting_rename'):  
@@ -723,8 +705,8 @@ async def handle_text_input(client, message: Message):
 async def handle_document(client, message: Message):  
     user_id = message.from_user.id  
       
-    # Add reaction using your custom method
-    add_reaction(message)  
+    # Add reaction
+    await add_reaction(client, message)  
       
     # Check cooldown  
     remaining = get_remaining_time(user_id)  
@@ -754,8 +736,8 @@ async def handle_document(client, message: Message):
 async def handle_video(client, message: Message):  
     user_id = message.from_user.id  
       
-    # Add reaction using your custom method
-    add_reaction(message)  
+    # Add reaction
+    await add_reaction(client, message)  
       
     # Check cooldown  
     remaining = get_remaining_time(user_id)  
@@ -774,8 +756,8 @@ async def handle_video(client, message: Message):
 async def handle_audio(client, message: Message):  
     user_id = message.from_user.id  
       
-    # Add reaction using your custom method
-    add_reaction(message)  
+    # Add reaction
+    await add_reaction(client, message)  
       
     # Check cooldown  
     remaining = get_remaining_time(user_id)  
@@ -934,7 +916,7 @@ async def process_download(client, message: Message, url):
 # Settings commands  
 @app.on_message(filters.command("setname") & filters.private)  
 async def setname_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     user_id = message.from_user.id  
     if len(message.command) < 2:  
@@ -953,7 +935,7 @@ async def setname_command(client, message: Message):
 
 @app.on_message(filters.command("setcaption") & filters.private)  
 async def setcaption_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     user_id = message.from_user.id  
     if len(message.command) < 2:  
@@ -972,7 +954,7 @@ async def setcaption_command(client, message: Message):
 
 @app.on_message(filters.command("clearsettings") & filters.private)  
 async def clearsettings_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     user_id = message.from_user.id  
     if user_id in user_settings:  
@@ -982,7 +964,7 @@ async def clearsettings_command(client, message: Message):
 # Thumbnail handler  
 @app.on_message(filters.photo & filters.private)  
 async def handle_thumbnail(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     user_id = message.from_user.id  
       
@@ -1012,7 +994,7 @@ async def handle_thumbnail(client, message: Message):
 # Show thumbnail command  
 @app.on_message(filters.command("showthumb") & filters.private)  
 async def showthumb_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     user_id = message.from_user.id  
     settings = user_settings.get(user_id, {})  
@@ -1059,21 +1041,16 @@ async def delete_thumb_callback(client, callback: CallbackQuery):
 # Total stats command (owner only)  
 @app.on_message(filters.command("total") & filters.user(Config.OWNER_ID))  
 async def total_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     stats = await db.get_stats()  
       
-    text = f"""📈 **Bot Statistics**  
+    text = f"""📈 **Bot Statistics** 👥 **Users:** • Total Users: {stats['total_users']}  
   
-👥 **Users:**  
-• Total Users: {stats['total_users']}  
-  
-📊 **Activity:**  
-• Total Downloads: {stats['total_downloads']}  
+📊 **Activity:** • Total Downloads: {stats['total_downloads']}  
 • Total Uploads: {stats['total_uploads']}  
   
-⚙️ **Bot Info:**  
-• Speed: Up to 500 MB/s  
+⚙️ **Bot Info:** • Speed: Up to 500 MB/s  
 • Max Size: 4 GB  
 • Cooldown: {COOLDOWN_TIME} seconds ({format_time(COOLDOWN_TIME)})  
 • Status: ✅ Online  
@@ -1086,7 +1063,7 @@ async def total_command(client, message: Message):
 # Broadcast (owner only)  
 @app.on_message(filters.command("broadcast") & filters.user(Config.OWNER_ID))  
 async def broadcast_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     if not message.reply_to_message:  
         await message.reply_text("❌ **Reply to a message to broadcast!**")  
@@ -1142,7 +1119,7 @@ async def broadcast_command(client, message: Message):
 # Cancel command - Cancel current task  
 @app.on_message(filters.command("cancel") & filters.private)  
 async def cancel_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     user_id = message.from_user.id  
       
@@ -1170,7 +1147,7 @@ async def cancel_command(client, message: Message):
 # Ping command - Check bot status  
 @app.on_message(filters.command("ping") & filters.private)  
 async def ping_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     start = time.time()  
     reply = await message.reply_text("🏓 **Pinging...**")  
@@ -1187,7 +1164,7 @@ async def ping_command(client, message: Message):
 # Error handler for unknown commands  
 @app.on_message(filters.command(["unknown"]) & filters.private)  
 async def unknown_command(client, message: Message):  
-    add_reaction(message)  
+    await add_reaction(client, message)  
       
     await message.reply_text(  
         "❓ **Unknown command!**\n\n"  
@@ -1205,7 +1182,7 @@ async def startup():
             f"💾 Max Size: 4 GB\n"  
             f"⏱️ Cooldown: {format_time(COOLDOWN_TIME)}\n"  
             f"✅ Status: Online\n\n"  
-            f"❤️ **Reactions:** Enabled with your custom method"  
+            f"❤️ **Reactions:** Enabled with custom method"  
         )  
     except Exception as e:  
         print(f"Startup notification failed: {e}")  
@@ -1243,7 +1220,7 @@ if __name__ == "__main__":
     print(f"⚡ Speed: Up to 500 MB/s")  
     print(f"💾 Max Size: 4 GB")  
     print(f"⏱️ Cooldown: {format_time(COOLDOWN_TIME)}")  
-    print(f"😊 Reactions: Enabled with your custom method")  
+    print(f"😊 Reactions: Enabled with custom method")  
     print("=" * 60)  
       
     try:  
@@ -1269,273 +1246,3 @@ if __name__ == "__main__":
         loop.run_until_complete(shutdown())  
         app.stop()  
         print("👋 Bot stopped successfully!")
-
-
-
-
-Update this with
-
-Hide navigation sidebarHide table of contents sidebar
-Pyrogram
-Toggle site navigation sidebar
-Toggle Light / Dark / Auto color theme
-Toggle table of contents sidebar
-Logo Pyrogram
-Search
-Introduction
-
-Quick Start
-Install Guide
-Getting Started
-
-Project Setup
-Authorization
-Invoking Methods
-Handling Updates
-Error Handling
-ExamplesToggle child pages in navigation
-API Reference
-
-Pyrogram Client
-Available MethodsToggle child pages in navigation
-start
-stop
-run
-restart
-add_handler
-remove_handler
-stop_transmission
-export_session_string
-set_parse_mode
-idle()
-compose()
-send_message
-forward_messages
-copy_message
-copy_media_group
-send_photo
-send_audio
-send_document
-send_sticker
-send_video
-send_animation
-send_voice
-send_video_note
-send_media_group
-send_location
-send_venue
-send_contact
-send_cached_media
-send_reaction
-edit_message_text
-edit_message_caption
-edit_message_media
-edit_message_reply_markup
-edit_inline_text
-edit_inline_caption
-edit_inline_media
-edit_inline_reply_markup
-send_chat_action
-delete_messages
-get_messages
-get_media_group
-get_chat_history
-get_chat_history_count
-read_chat_history
-send_poll
-vote_poll
-stop_poll
-retract_vote
-send_dice
-search_messages
-search_messages_count
-search_global
-search_global_count
-download_media
-stream_media
-get_discussion_message
-get_discussion_replies
-get_discussion_replies_count
-get_custom_emoji_stickers
-join_chat
-leave_chat
-ban_chat_member
-unban_chat_member
-restrict_chat_member
-promote_chat_member
-set_administrator_title
-set_chat_photo
-delete_chat_photo
-set_chat_title
-set_chat_description
-set_chat_permissions
-pin_chat_message
-unpin_chat_message
-unpin_all_chat_messages
-get_chat
-get_chat_member
-get_chat_members
-get_chat_members_count
-get_dialogs
-get_dialogs_count
-set_chat_username
-get_nearby_chats
-archive_chats
-unarchive_chats
-add_chat_members
-create_channel
-create_group
-create_supergroup
-delete_channel
-delete_supergroup
-delete_user_history
-set_slow_mode
-mark_chat_unread
-get_chat_event_log
-get_chat_online_count
-get_send_as_chats
-set_send_as_chat
-set_chat_protected_content
-get_me
-get_users
-get_chat_photos
-get_chat_photos_count
-set_profile_photo
-delete_profile_photos
-set_username
-update_profile
-block_user
-unblock_user
-get_common_chats
-get_default_emoji_statuses
-set_emoji_status
-get_chat_invite_link
-export_chat_invite_link
-create_chat_invite_link
-edit_chat_invite_link
-revoke_chat_invite_link
-delete_chat_invite_link
-get_chat_invite_link_joiners
-get_chat_invite_link_joiners_count
-get_chat_admin_invite_links
-get_chat_admin_invite_links_count
-get_chat_admins_with_invite_links
-get_chat_join_requests
-delete_chat_admin_invite_links
-approve_chat_join_request
-approve_all_chat_join_requests
-decline_chat_join_request
-decline_all_chat_join_requests
-add_contact
-delete_contacts
-import_contacts
-get_contacts
-get_contacts_count
-enable_cloud_password
-change_cloud_password
-remove_cloud_password
-get_inline_bot_results
-send_inline_bot_result
-answer_callback_query
-answer_inline_query
-request_callback_answer
-send_game
-set_game_score
-get_game_high_scores
-set_bot_commands
-get_bot_commands
-delete_bot_commands
-set_bot_default_privileges
-get_bot_default_privileges
-set_chat_menu_button
-get_chat_menu_button
-answer_web_app_query
-connect
-disconnect
-initialize
-terminate
-send_code
-resend_code
-sign_in
-sign_in_bot
-sign_up
-get_password_hint
-check_password
-send_recovery_code
-recover_password
-accept_terms_of_service
-log_out
-invoke
-resolve_peer
-save_file
-Available TypesToggle child pages in navigation
-Bound MethodsToggle child pages in navigation
-EnumerationsToggle child pages in navigation
-Update Handlers
-Decorators
-RPC ErrorsToggle child pages in navigation
-Update Filters
-Topic Guides
-
-Using Filters
-Creating Filters
-More on Updates
-Client Settings
-Speedups
-Text Formatting
-Synchronous Usage
-Smart Plugins
-Storage Engines
-Object Serialization
-Proxy Settings
-Scheduling Tasks
-MTProto vs. Bot API
-Debugging
-Test Servers
-Advanced Usage
-Meta
-
-Frequently Asked QuestionsToggle child pages in navigation
-Release NotesToggle child pages in navigation
-Telegram Raw API
-
-Raw Functions
-Raw Types
-Raw Base
-Pyrogram — version 2.0
-Home » Available Methods » send_reaction()
- View on GitHub
- Star
- Used by
-send_reaction()
-Client.send_reaction()
-Send a reaction to a message.
-
-Usable by  Users  Bots
-Parameters:
-chat_id (int | str) – Unique identifier (int) or username (str) of the target chat.
-
-message_id (int) – Identifier of the message.
-
-emoji (str, optional) – Reaction emoji. Pass “” as emoji (default) to retract the reaction.
-
-big (bool, optional) – Pass True to show a bigger and longer reaction. Defaults to False.
-
-Returns:
-bool – On success, True is returned.
-
-Example
-
-# Send a reaction
-await app.send_reaction(chat_id, message_id, "🔥")
-
-# Retract a reaction
-await app.send_reaction(chat_id, message_id)
-Next
- 
- 
-Previous
-Pyrogram  Copyright 2017 – 2025,  DanReleased under the GNU LGPL v3.0 license
-     Support Pyrogram
-On this page
-Client.send_reaction()

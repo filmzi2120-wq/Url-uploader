@@ -7,6 +7,7 @@ from config import Config
 from helpers import sanitize_filename
 import time
 import shutil
+import hashlib
 
 # Auxiliary function for formatting file sizes
 def format_bytes(size):
@@ -18,6 +19,20 @@ def format_bytes(size):
         size /= power
         n += 1
     return f"{size:.2f} {units[n]}"
+
+def truncate_filename(filename, max_length=200):
+    """Truncate filename to prevent filesystem errors while preserving extension"""
+    name, ext = os.path.splitext(filename)
+    
+    # Reserve space for extension and some buffer
+    max_name_length = max_length - len(ext) - 10
+    
+    if len(name) > max_name_length:
+        # Create hash of full name for uniqueness
+        name_hash = hashlib.md5(name.encode()).hexdigest()[:8]
+        name = name[:max_name_length - 9] + '_' + name_hash
+    
+    return name + ext
 
 class Downloader:
     def __init__(self):
@@ -69,6 +84,7 @@ class Downloader:
                             filename = url.split('/')[-1].split('?')[0] or 'downloaded_file'
                     
                     filename = sanitize_filename(filename)
+                    filename = truncate_filename(filename)
                     filepath = os.path.join(self.download_dir, filename)
                     
                     downloaded = 0
@@ -97,10 +113,13 @@ class Downloader:
             return None, f"Download error: {str(e)}"
 
     async def download_ytdlp(self, url, progress_callback=None):
-        """Download using yt-dlp with BEST quality - ORIGINAL file + TikTok support"""
+        """Download using yt-dlp with BEST quality - Enhanced TikTok support"""
         try:
+            # Generate a short, safe filename template
+            url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+            
             ydl_opts = {
-                'outtmpl': os.path.join(self.download_dir, '%(title)s.%(ext)s'),
+                'outtmpl': os.path.join(self.download_dir, f'video_{url_hash}_%(id)s.%(ext)s'),
                 'format': 'bestvideo+bestaudio/best',
                 'merge_output_format': 'mp4',
                 'quiet': True,
@@ -110,46 +129,79 @@ class Downloader:
                 'concurrent_fragment_downloads': 5,
                 'buffer_size': 16384,
                 'http_chunk_size': 10485760,
+                'cookiesfrombrowser': None,  # Don't use browser cookies
                 'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
                     'Sec-Fetch-Mode': 'navigate',
-                    'Referer': 'https://www.tiktok.com/'
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Referer': 'https://www.tiktok.com/',
+                    'DNT': '1',
                 },
                 'extractor_args': {
                     'tiktok': {
-                        'api_hostname': 'api22-normal-c-useast2a.tiktokv.com',
+                        'api_hostname': ['api16-normal-c-useast1a.tiktokv.com', 'api22-normal-c-useast2a.tiktokv.com'],
                         'app_version': '34.1.2',
-                        'manifest_app_version': '341'
+                        'manifest_app_version': '341',
+                    },
+                    'TikTok': {
+                        'webpage_video_id': True,
                     }
                 },
-                'retries': 15,
-                'fragment_retries': 15,
+                'retries': 10,
+                'fragment_retries': 10,
                 'skip_unavailable_fragments': True,
                 'keepvideo': False,
                 'socket_timeout': 30,
                 'source_address': '0.0.0.0',
+                'geo_bypass': True,
+                'geo_bypass_country': 'US',
                 'postprocessor_args': {
                     'ffmpeg': ['-threads', '4']
-                }
+                },
+                # Additional TikTok-specific options
+                'extractor_retries': 5,
+                'legacy_server_connect': False,
             }
             
             loop = asyncio.get_event_loop()
             
             def download():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    filename = ydl.prepare_filename(info)
+                    try:
+                        info = ydl.extract_info(url, download=True)
+                        filename = ydl.prepare_filename(info)
+                        
+                        # Check multiple possible output files
+                        base = os.path.splitext(filename)[0]
+                        possible_files = [
+                            filename,
+                            f"{base}.mp4",
+                            f"{base}.mkv",
+                            f"{base}.webm",
+                        ]
+                        
+                        # Also check the directory for the most recent file with our hash
+                        for file in os.listdir(self.download_dir):
+                            if url_hash in file and file.endswith(('.mp4', '.mkv', '.webm')):
+                                possible_files.append(os.path.join(self.download_dir, file))
+                        
+                        for pfile in possible_files:
+                            if os.path.exists(pfile):
+                                return pfile, info.get('title', 'Video')
+                        
+                        return filename, info.get('title', 'Video')
                     
-                    base = os.path.splitext(filename)[0]
-                    possible_files = [f"{base}.mp4", f"{base}.mkv", f"{base}.webm", filename]
-                    
-                    for pfile in possible_files:
-                        if os.path.exists(pfile):
-                            return pfile, info.get('title', 'Video')
-                    
-                    return filename, info.get('title', 'Video')
+                    except yt_dlp.utils.DownloadError as e:
+                        error_msg = str(e)
+                        # Check if it's a TikTok-specific error
+                        if 'TikTok' in error_msg:
+                            raise Exception(f"TikTok download failed - the video may be private, geo-restricted, or unavailable. Try updating yt-dlp: pip install -U yt-dlp")
+                        raise
             
             filepath, title = await loop.run_in_executor(None, download)
             
@@ -159,104 +211,108 @@ class Downloader:
                 return None, "Failed to download video - file not found after download"
                 
         except yt_dlp.utils.DownloadError as e:
+            error_msg = str(e)
+            if 'unable to open for writing' in error_msg and 'File name too long' in error_msg:
+                return None, "Filename too long error - please try again (using shorter filename now)"
+            elif 'Unable to extract' in error_msg or 'webpage video data' in error_msg:
+                return None, "Failed to extract video - it may be private, deleted, or geo-restricted. Please verify the link or try updating: pip install -U yt-dlp"
             return None, f"yt-dlp download error: {str(e)}"
         except Exception as e:
             return None, f"Download error: {str(e)}"
 
     async def download_torrent(self, magnet_or_file, progress_callback=None):
-        """Download torrent using libtorrent with optimized and corrected settings"""
+        """Download torrent using libtorrent with optimized settings"""
         ses = None
         handle = None
         try:
-            # 1. Setup Session
+            # Setup Session
             ses = lt.session({'listen_interfaces': '0.0.0.0:6881'})
             ses.add_dht_router('router.bittorrent.com', 6881)
             ses.add_dht_router('router.utorrent.com', 6881)
+            ses.add_dht_router('dht.transmissionbt.com', 6881)
             
             settings = {
                 'connections_limit': 400,
-                'alert_mask': lt.alert.category_t.error_notification | lt.alert.category_t.storage_notification | lt.alert.category_t.status_notification
+                'alert_mask': lt.alert.category_t.error_notification | 
+                             lt.alert.category_t.storage_notification | 
+                             lt.alert.category_t.status_notification
             }
             ses.apply_settings(settings)
 
-            # 2. Setup Add Parameters based on input type (FIXED API MISMATCH)
+            # Setup Add Parameters
             if magnet_or_file.startswith('magnet:'):
-                # FIX: Call parse_magnet_uri with ONE argument to get the new params object
-                p = lt.parse_magnet_uri(magnet_or_file) 
+                p = lt.parse_magnet_uri(magnet_or_file)
             else:
-                # It's a torrent file path
                 if not os.path.exists(magnet_or_file):
                     return None, "Torrent file not found"
                 p = lt.add_torrent_params()
-                p.ti = lt.torrent_info(magnet_or_file)
+                info = lt.torrent_info(magnet_or_file)
+                p.ti = info
             
-            # Apply common settings (save_path, storage_mode, flags)
             p.save_path = self.torrent_dir
             p.storage_mode = lt.storage_mode_t.storage_mode_sparse
-            p.flags = lt.torrent_flags.auto_managed 
+            p.flags = lt.torrent_flags.auto_managed
 
-            # 3. Add Torrent
+            # Add Torrent
             handle = ses.add_torrent(p)
             
-            # 4. Wait for Metadata and Download Loop
-            metadata_timeout = 180  # 3 minutes for metadata/connection
-            download_timeout = 7200 # 2 hours overall download timeout
+            # Download Loop
+            metadata_timeout = 180
+            download_timeout = 7200
             start_time = time.time()
             last_progress = -1
+            metadata_received = False
             
             while not handle.is_seed():
-                # Check overall timeout
                 if time.time() - start_time > download_timeout:
-                    return None, "Torrent download timed out after 2 hours."
+                    return None, "Torrent download timed out after 2 hours"
                 
                 s = handle.status()
 
-                # --- Alert Processing ---
+                # Process alerts
                 alerts = ses.pop_alerts()
                 for alert in alerts:
-                    # Check for critical errors
-                    if type(alert) == lt.torrent_error_alert:
-                        return None, f"Torrent error: {alert.msg}"
-                    # Check for metadata errors/timeouts
-                    if type(alert) == lt.metadata_failed_alert:
+                    if isinstance(alert, lt.torrent_error_alert):
+                        return None, f"Torrent error: {alert.message()}"
+                    if isinstance(alert, lt.metadata_failed_alert):
                         return None, "Failed to fetch metadata (no peers/dead torrent)"
+                    if isinstance(alert, lt.metadata_received_alert):
+                        metadata_received = True
                 
-                # --- Progress Reporting ---
+                # Progress Reporting
                 if not handle.has_metadata():
-                    # Metadata phase
                     elapsed = time.time() - start_time
                     if elapsed > metadata_timeout:
                         return None, "Timeout waiting for torrent metadata (3 min)"
 
-                    # Update status message with connected peers
-                    status_msg = f"Connecting... ({s.num_peers} peers, {s.num_incomplete} seeds)"
+                    status_msg = f"Connecting... ({s.num_peers} peers)"
                     if progress_callback:
                         await progress_callback(0, 100, status_msg)
                 
                 else:
-                    # Download phase
+                    if not metadata_received:
+                        metadata_received = True
+                    
                     info = handle.get_torrent_info()
                     total_size = info.total_size()
                     
                     if total_size > Config.MAX_FILE_SIZE:
-                        return None, f"Torrent size ({format_bytes(total_size)}) exceeds limit."
+                        return None, f"Torrent size ({format_bytes(total_size)}) exceeds limit"
                     
                     progress = s.progress * 100
-                    download_rate = s.download_rate / 1024 / 1024 # MB/s
+                    download_rate = s.download_rate / 1024 / 1024
                     
                     if progress_callback and abs(progress - last_progress) >= 1:
                         last_progress = progress
                         status_msg = f"Torrenting | ↓ {download_rate:.1f} MB/s | {s.num_peers} peers | {progress:.1f}%"
                         await progress_callback(int(s.total_done), total_size, status_msg)
 
-                # Wait for 1 second before the next loop iteration
                 await asyncio.sleep(1)
 
-            # 5. Finalize (after seeding)
+            # Finalize
             info = handle.get_torrent_info()
             name = info.name()
 
-            # Determine final file path
             if info.num_files() == 1:
                 filepath = os.path.join(self.torrent_dir, info.files().file_path(0))
             else:
@@ -267,7 +323,6 @@ class Downloader:
         except Exception as e:
             return None, f"Torrent error: {str(e)}"
         finally:
-            # Clean up the handle and session
             if ses and handle and handle.is_valid():
                 ses.remove_torrent(handle)
 

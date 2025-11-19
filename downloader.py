@@ -115,6 +115,15 @@ class Downloader:
     async def download_ytdlp(self, url, progress_callback=None):
         """Download using yt-dlp with BEST quality - Enhanced TikTok support"""
         try:
+            # Check yt-dlp version and warn if outdated
+            try:
+                ytdlp_version = yt_dlp.version.__version__
+                year = int(ytdlp_version.split('.')[0])
+                if year < 2024:
+                    print(f"⚠️ Warning: yt-dlp version {ytdlp_version} is outdated. Run: pip install -U yt-dlp")
+            except:
+                pass
+            
             # Generate a short, safe filename template
             url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
             
@@ -215,7 +224,7 @@ class Downloader:
             if 'unable to open for writing' in error_msg and 'File name too long' in error_msg:
                 return None, "Filename too long error - please try again (using shorter filename now)"
             elif 'Unable to extract' in error_msg or 'webpage video data' in error_msg:
-                return None, "Failed to extract video - it may be private, deleted, or geo-restricted. Please verify the link or try updating: pip install -U yt-dlp"
+                return None, "❌ TikTok extraction failed!\n\n🔧 Solution: Update yt-dlp to the latest version:\n   pip install -U yt-dlp\n\nℹ️ TikTok frequently updates their API. Your current version is too old."
             return None, f"yt-dlp download error: {str(e)}"
         except Exception as e:
             return None, f"Download error: {str(e)}"

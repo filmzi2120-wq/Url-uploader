@@ -8,6 +8,8 @@ from helpers import sanitize_filename
 import time
 import shutil
 import hashlib
+import re
+import json
 
 # Auxiliary function for formatting file sizes
 def format_bytes(size):
@@ -112,6 +114,80 @@ class Downloader:
         except Exception as e:
             return None, f"Download error: {str(e)}"
 
+    async def download_tiktok_fallback(self, url, progress_callback=None):
+        """Fallback method to download TikTok videos using direct API approach"""
+        try:
+            # Extract video ID from URL
+            video_id = None
+            patterns = [
+                r'tiktok\.com.*?/video/(\d+)',
+                r'tiktok\.com.*?/v/(\d+)',
+                r'vm\.tiktok\.com/([A-Za-z0-9]+)',
+                r'vt\.tiktok\.com/([A-Za-z0-9]+)',
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, url)
+                if match:
+                    video_id = match.group(1)
+                    break
+            
+            if not video_id:
+                return None, "Could not extract TikTok video ID"
+            
+            # Try to get the actual video URL
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Referer': 'https://www.tiktok.com/',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                # First, try to resolve short URLs
+                if 'vm.tiktok.com' in url or 'vt.tiktok.com' in url:
+                    async with session.get(url, headers=headers, allow_redirects=True) as resp:
+                        url = str(resp.url)
+                
+                # Try OEmbed API (official TikTok API)
+                oembed_url = f"https://www.tiktok.com/oembed?url={url}"
+                try:
+                    async with session.get(oembed_url, headers=headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            title = data.get('title', f'tiktok_{video_id}')
+                            # OEmbed doesn't give direct video URL, but confirms video exists
+                except:
+                    pass
+                
+                # Try alternative download APIs
+                api_urls = [
+                    f"https://api16-normal-c-useast1a.tiktokv.com/aweme/v1/feed/?aweme_id={video_id}",
+                    f"https://api22-normal-c-useast2a.tiktokv.com/aweme/v1/feed/?aweme_id={video_id}",
+                ]
+                
+                for api_url in api_urls:
+                    try:
+                        async with session.get(api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                aweme_list = data.get('aweme_list', [])
+                                if aweme_list:
+                                    video_data = aweme_list[0].get('video', {})
+                                    play_addr = video_data.get('play_addr', {})
+                                    url_list = play_addr.get('url_list', [])
+                                    
+                                    if url_list:
+                                        video_url = url_list[0]
+                                        filename = f"tiktok_{video_id}.mp4"
+                                        return await self.download_file(video_url, filename, progress_callback)
+                    except:
+                        continue
+            
+            return None, "TikTok API extraction failed"
+            
+        except Exception as e:
+            return None, f"TikTok fallback error: {str(e)}"
+
     async def download_ytdlp(self, url, progress_callback=None):
         """Download using yt-dlp with BEST quality - Enhanced TikTok support"""
         try:
@@ -124,12 +200,28 @@ class Downloader:
             except:
                 pass
             
+            # Check if this is TikTok - use fallback first
+            is_tiktok = any(domain in url.lower() for domain in ['tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com'])
+            
+            if is_tiktok:
+                if progress_callback:
+                    await progress_callback(0, 100, "Trying TikTok direct download...")
+                
+                # Try fallback method first
+                result, error = await self.download_tiktok_fallback(url, progress_callback)
+                if result:
+                    return result, None
+                
+                # If fallback fails, try yt-dlp
+                if progress_callback:
+                    await progress_callback(0, 100, "Trying alternative method...")
+            
             # Generate a short, safe filename template
             url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
             
             ydl_opts = {
                 'outtmpl': os.path.join(self.download_dir, f'video_{url_hash}_%(id)s.%(ext)s'),
-                'format': 'bestvideo+bestaudio/best',
+                'format': 'best[ext=mp4]/best',  # Simplified format for better compatibility
                 'merge_output_format': 'mp4',
                 'quiet': True,
                 'no_warnings': True,
@@ -138,43 +230,33 @@ class Downloader:
                 'concurrent_fragment_downloads': 5,
                 'buffer_size': 16384,
                 'http_chunk_size': 10485760,
-                'cookiesfrombrowser': None,  # Don't use browser cookies
+                'cookiesfrombrowser': None,
+                'nocheckcertificate': True,  # Skip certificate verification
                 'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+                    'Accept': '*/*',
                     'Accept-Language': 'en-US,en;q=0.9',
                     'Accept-Encoding': 'gzip, deflate, br',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'none',
-                    'Sec-Fetch-User': '?1',
-                    'Sec-Fetch-Dest': 'document',
+                    'Origin': 'https://www.tiktok.com',
                     'Referer': 'https://www.tiktok.com/',
-                    'DNT': '1',
+                    'Sec-Fetch-Mode': 'cors',
+                    'Sec-Fetch-Site': 'same-site',
+                    'Sec-Fetch-Dest': 'empty',
                 },
                 'extractor_args': {
                     'tiktok': {
-                        'api_hostname': ['api16-normal-c-useast1a.tiktokv.com', 'api22-normal-c-useast2a.tiktokv.com'],
-                        'app_version': '34.1.2',
-                        'manifest_app_version': '341',
-                    },
-                    'TikTok': {
-                        'webpage_video_id': True,
+                        'api_hostname': 'api16-normal-c-useast1a.tiktokv.com',
                     }
                 },
-                'retries': 10,
-                'fragment_retries': 10,
+                'retries': 15,
+                'fragment_retries': 15,
                 'skip_unavailable_fragments': True,
                 'keepvideo': False,
                 'socket_timeout': 30,
                 'source_address': '0.0.0.0',
                 'geo_bypass': True,
-                'geo_bypass_country': 'US',
-                'postprocessor_args': {
-                    'ffmpeg': ['-threads', '4']
-                },
-                # Additional TikTok-specific options
-                'extractor_retries': 5,
-                'legacy_server_connect': False,
+                'extractor_retries': 10,
+                'ignoreerrors': False,
             }
             
             loop = asyncio.get_event_loop()
@@ -224,9 +306,15 @@ class Downloader:
             if 'unable to open for writing' in error_msg and 'File name too long' in error_msg:
                 return None, "Filename too long error - please try again (using shorter filename now)"
             elif 'Unable to extract' in error_msg or 'webpage video data' in error_msg:
-                return None, "❌ TikTok extraction failed!\n\n🔧 Solution: Update yt-dlp to the latest version:\n   pip install -U yt-dlp\n\nℹ️ TikTok frequently updates their API. Your current version is too old."
+                # For TikTok, suggest alternative solutions
+                if any(domain in url.lower() for domain in ['tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com']):
+                    return None, "❌ TikTok download failed after trying multiple methods.\n\n🔧 Solutions:\n1. Update yt-dlp: pip install -U yt-dlp\n2. Check if video is private/age-restricted\n3. Try copying the link again\n4. Video may be geo-blocked in your region"
+                return None, f"Failed to extract video: {str(e)}"
             return None, f"yt-dlp download error: {str(e)}"
         except Exception as e:
+            error_msg = str(e)
+            if 'TikTok download failed' in error_msg:
+                return None, error_msg
             return None, f"Download error: {str(e)}"
 
     async def download_torrent(self, magnet_or_file, progress_callback=None):

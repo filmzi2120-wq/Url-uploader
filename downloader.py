@@ -115,75 +115,173 @@ class Downloader:
             return None, f"Download error: {str(e)}"
 
     async def download_tiktok_fallback(self, url, progress_callback=None):
-        """Fallback method to download TikTok videos using direct API approach"""
+        """Fallback method to download TikTok videos using multiple approaches"""
         try:
-            # Extract video ID from URL
-            video_id = None
-            patterns = [
-                r'tiktok\.com.*?/video/(\d+)',
-                r'tiktok\.com.*?/v/(\d+)',
-                r'vm\.tiktok\.com/([A-Za-z0-9]+)',
-                r'vt\.tiktok\.com/([A-Za-z0-9]+)',
-            ]
-            
-            for pattern in patterns:
-                match = re.search(pattern, url)
-                if match:
-                    video_id = match.group(1)
-                    break
-            
-            if not video_id:
-                return None, "Could not extract TikTok video ID"
-            
-            # Try to get the actual video URL
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Referer': 'https://www.tiktok.com/',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             }
             
-            async with aiohttp.ClientSession() as session:
-                # First, try to resolve short URLs
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                # Step 1: Resolve short URL to get full URL and video ID
+                resolved_url = url
                 if 'vm.tiktok.com' in url or 'vt.tiktok.com' in url:
-                    async with session.get(url, headers=headers, allow_redirects=True) as resp:
-                        url = str(resp.url)
+                    try:
+                        async with session.get(url, headers=headers, allow_redirects=True) as resp:
+                            resolved_url = str(resp.url)
+                    except:
+                        pass
                 
-                # Try OEmbed API (official TikTok API)
-                oembed_url = f"https://www.tiktok.com/oembed?url={url}"
-                try:
-                    async with session.get(oembed_url, headers=headers) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            title = data.get('title', f'tiktok_{video_id}')
-                            # OEmbed doesn't give direct video URL, but confirms video exists
-                except:
-                    pass
-                
-                # Try alternative download APIs
-                api_urls = [
-                    f"https://api16-normal-c-useast1a.tiktokv.com/aweme/v1/feed/?aweme_id={video_id}",
-                    f"https://api22-normal-c-useast2a.tiktokv.com/aweme/v1/feed/?aweme_id={video_id}",
+                # Extract video ID
+                video_id = None
+                patterns = [
+                    r'tiktok\.com.*?/video/(\d+)',
+                    r'tiktok\.com.*?/v/(\d+)',
+                    r'@[\w\.]+/video/(\d+)',
                 ]
                 
-                for api_url in api_urls:
+                for pattern in patterns:
+                    match = re.search(pattern, resolved_url)
+                    if match:
+                        video_id = match.group(1)
+                        break
+                
+                if not video_id:
+                    return None, "Could not extract TikTok video ID from URL"
+                
+                if progress_callback:
+                    await progress_callback(10, 100, f"Found video ID: {video_id}")
+                
+                # Step 2: Try TikTok's webpage scraping method
+                try:
+                    if progress_callback:
+                        await progress_callback(20, 100, "Fetching video page...")
+                    
+                    async with session.get(resolved_url, headers=headers) as resp:
+                        if resp.status == 200:
+                            html = await resp.text()
+                            
+                            # Method 1: Try to find video URL in __UNIVERSAL_DATA_FOR_REHYDRATION__
+                            if '__UNIVERSAL_DATA_FOR_REHYDRATION__' in html:
+                                try:
+                                    start = html.find('__UNIVERSAL_DATA_FOR_REHYDRATION__') + len('__UNIVERSAL_DATA_FOR_REHYDRATION__') + 1
+                                    end = html.find('</script>', start)
+                                    json_str = html[start:end].strip()
+                                    
+                                    if json_str:
+                                        data = json.loads(json_str)
+                                        
+                                        # Navigate through the nested structure
+                                        default_scope = data.get('__DEFAULT_SCOPE__', {})
+                                        webapp_video = default_scope.get('webapp.video-detail', {})
+                                        item_info = webapp_video.get('itemInfo', {}).get('itemStruct', {})
+                                        video_data = item_info.get('video', {})
+                                        
+                                        # Try different video URL fields
+                                        video_url = None
+                                        if 'downloadAddr' in video_data:
+                                            video_url = video_data['downloadAddr']
+                                        elif 'playAddr' in video_data:
+                                            video_url = video_data['playAddr']
+                                        elif 'playApi' in video_data:
+                                            video_url = video_data['playApi']
+                                        
+                                        if video_url:
+                                            if progress_callback:
+                                                await progress_callback(50, 100, "Found video URL, downloading...")
+                                            
+                                            filename = f"tiktok_{video_id}.mp4"
+                                            
+                                            # Download the video with TikTok headers
+                                            download_headers = {
+                                                'User-Agent': headers['User-Agent'],
+                                                'Referer': 'https://www.tiktok.com/',
+                                                'Accept': '*/*',
+                                            }
+                                            
+                                            async with session.get(video_url, headers=download_headers, allow_redirects=True) as video_resp:
+                                                if video_resp.status == 200:
+                                                    filepath = os.path.join(self.download_dir, filename)
+                                                    total_size = int(video_resp.headers.get('content-length', 0))
+                                                    
+                                                    downloaded = 0
+                                                    with open(filepath, 'wb') as f:
+                                                        async for chunk in video_resp.content.iter_chunked(1024 * 1024):
+                                                            f.write(chunk)
+                                                            downloaded += len(chunk)
+                                                            if progress_callback and total_size > 0:
+                                                                await progress_callback(downloaded, total_size, "Downloading video...")
+                                                    
+                                                    if os.path.exists(filepath):
+                                                        return filepath, None
+                                except json.JSONDecodeError:
+                                    pass
+                            
+                            # Method 2: Try SIGI_STATE approach
+                            if 'SIGI_STATE' in html:
+                                try:
+                                    start = html.find('SIGI_STATE') + len('SIGI_STATE') + 1
+                                    end = html.find('</script>', start)
+                                    json_str = html[start:end].strip()
+                                    
+                                    if json_str:
+                                        data = json.loads(json_str)
+                                        item_module = data.get('ItemModule', {})
+                                        
+                                        for key, item in item_module.items():
+                                            if isinstance(item, dict) and 'video' in item:
+                                                video_data = item['video']
+                                                video_url = video_data.get('downloadAddr') or video_data.get('playAddr')
+                                                
+                                                if video_url:
+                                                    filename = f"tiktok_{video_id}.mp4"
+                                                    return await self.download_file(video_url, filename, progress_callback)
+                                except:
+                                    pass
+                except Exception as e:
+                    if progress_callback:
+                        await progress_callback(30, 100, f"Webpage method failed, trying API...")
+                
+                # Step 3: Try third-party API services (these are public APIs)
+                api_services = [
+                    f"https://www.tikwm.com/api/?url={resolved_url}",
+                    f"https://api.tiktokv.com/aweme/v1/feed/?aweme_id={video_id}",
+                ]
+                
+                for api_url in api_services:
                     try:
-                        async with session.get(api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        if progress_callback:
+                            await progress_callback(40, 100, "Trying alternative API...")
+                        
+                        async with session.get(api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                             if resp.status == 200:
                                 data = await resp.json()
-                                aweme_list = data.get('aweme_list', [])
-                                if aweme_list:
-                                    video_data = aweme_list[0].get('video', {})
-                                    play_addr = video_data.get('play_addr', {})
-                                    url_list = play_addr.get('url_list', [])
-                                    
-                                    if url_list:
-                                        video_url = url_list[0]
+                                
+                                # tikwm.com API response
+                                if 'data' in data:
+                                    video_url = data['data'].get('play') or data['data'].get('hdplay') or data['data'].get('wmplay')
+                                    if video_url:
                                         filename = f"tiktok_{video_id}.mp4"
                                         return await self.download_file(video_url, filename, progress_callback)
-                    except:
+                                
+                                # TikTok API response
+                                elif 'aweme_list' in data:
+                                    aweme_list = data.get('aweme_list', [])
+                                    if aweme_list:
+                                        video_data = aweme_list[0].get('video', {})
+                                        play_addr = video_data.get('play_addr', {})
+                                        url_list = play_addr.get('url_list', [])
+                                        
+                                        if url_list:
+                                            video_url = url_list[0]
+                                            filename = f"tiktok_{video_id}.mp4"
+                                            return await self.download_file(video_url, filename, progress_callback)
+                    except Exception as e:
                         continue
             
-            return None, "TikTok API extraction failed"
+            return None, "All TikTok download methods failed"
             
         except Exception as e:
             return None, f"TikTok fallback error: {str(e)}"

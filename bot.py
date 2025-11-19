@@ -1269,3 +1269,273 @@ if __name__ == "__main__":
         loop.run_until_complete(shutdown())  
         app.stop()  
         print("👋 Bot stopped successfully!")
+
+
+
+
+Update this with
+
+Hide navigation sidebarHide table of contents sidebar
+Pyrogram
+Toggle site navigation sidebar
+Toggle Light / Dark / Auto color theme
+Toggle table of contents sidebar
+Logo Pyrogram
+Search
+Introduction
+
+Quick Start
+Install Guide
+Getting Started
+
+Project Setup
+Authorization
+Invoking Methods
+Handling Updates
+Error Handling
+ExamplesToggle child pages in navigation
+API Reference
+
+Pyrogram Client
+Available MethodsToggle child pages in navigation
+start
+stop
+run
+restart
+add_handler
+remove_handler
+stop_transmission
+export_session_string
+set_parse_mode
+idle()
+compose()
+send_message
+forward_messages
+copy_message
+copy_media_group
+send_photo
+send_audio
+send_document
+send_sticker
+send_video
+send_animation
+send_voice
+send_video_note
+send_media_group
+send_location
+send_venue
+send_contact
+send_cached_media
+send_reaction
+edit_message_text
+edit_message_caption
+edit_message_media
+edit_message_reply_markup
+edit_inline_text
+edit_inline_caption
+edit_inline_media
+edit_inline_reply_markup
+send_chat_action
+delete_messages
+get_messages
+get_media_group
+get_chat_history
+get_chat_history_count
+read_chat_history
+send_poll
+vote_poll
+stop_poll
+retract_vote
+send_dice
+search_messages
+search_messages_count
+search_global
+search_global_count
+download_media
+stream_media
+get_discussion_message
+get_discussion_replies
+get_discussion_replies_count
+get_custom_emoji_stickers
+join_chat
+leave_chat
+ban_chat_member
+unban_chat_member
+restrict_chat_member
+promote_chat_member
+set_administrator_title
+set_chat_photo
+delete_chat_photo
+set_chat_title
+set_chat_description
+set_chat_permissions
+pin_chat_message
+unpin_chat_message
+unpin_all_chat_messages
+get_chat
+get_chat_member
+get_chat_members
+get_chat_members_count
+get_dialogs
+get_dialogs_count
+set_chat_username
+get_nearby_chats
+archive_chats
+unarchive_chats
+add_chat_members
+create_channel
+create_group
+create_supergroup
+delete_channel
+delete_supergroup
+delete_user_history
+set_slow_mode
+mark_chat_unread
+get_chat_event_log
+get_chat_online_count
+get_send_as_chats
+set_send_as_chat
+set_chat_protected_content
+get_me
+get_users
+get_chat_photos
+get_chat_photos_count
+set_profile_photo
+delete_profile_photos
+set_username
+update_profile
+block_user
+unblock_user
+get_common_chats
+get_default_emoji_statuses
+set_emoji_status
+get_chat_invite_link
+export_chat_invite_link
+create_chat_invite_link
+edit_chat_invite_link
+revoke_chat_invite_link
+delete_chat_invite_link
+get_chat_invite_link_joiners
+get_chat_invite_link_joiners_count
+get_chat_admin_invite_links
+get_chat_admin_invite_links_count
+get_chat_admins_with_invite_links
+get_chat_join_requests
+delete_chat_admin_invite_links
+approve_chat_join_request
+approve_all_chat_join_requests
+decline_chat_join_request
+decline_all_chat_join_requests
+add_contact
+delete_contacts
+import_contacts
+get_contacts
+get_contacts_count
+enable_cloud_password
+change_cloud_password
+remove_cloud_password
+get_inline_bot_results
+send_inline_bot_result
+answer_callback_query
+answer_inline_query
+request_callback_answer
+send_game
+set_game_score
+get_game_high_scores
+set_bot_commands
+get_bot_commands
+delete_bot_commands
+set_bot_default_privileges
+get_bot_default_privileges
+set_chat_menu_button
+get_chat_menu_button
+answer_web_app_query
+connect
+disconnect
+initialize
+terminate
+send_code
+resend_code
+sign_in
+sign_in_bot
+sign_up
+get_password_hint
+check_password
+send_recovery_code
+recover_password
+accept_terms_of_service
+log_out
+invoke
+resolve_peer
+save_file
+Available TypesToggle child pages in navigation
+Bound MethodsToggle child pages in navigation
+EnumerationsToggle child pages in navigation
+Update Handlers
+Decorators
+RPC ErrorsToggle child pages in navigation
+Update Filters
+Topic Guides
+
+Using Filters
+Creating Filters
+More on Updates
+Client Settings
+Speedups
+Text Formatting
+Synchronous Usage
+Smart Plugins
+Storage Engines
+Object Serialization
+Proxy Settings
+Scheduling Tasks
+MTProto vs. Bot API
+Debugging
+Test Servers
+Advanced Usage
+Meta
+
+Frequently Asked QuestionsToggle child pages in navigation
+Release NotesToggle child pages in navigation
+Telegram Raw API
+
+Raw Functions
+Raw Types
+Raw Base
+Pyrogram — version 2.0
+Home » Available Methods » send_reaction()
+ View on GitHub
+ Star
+ Used by
+send_reaction()
+Client.send_reaction()
+Send a reaction to a message.
+
+Usable by  Users  Bots
+Parameters:
+chat_id (int | str) – Unique identifier (int) or username (str) of the target chat.
+
+message_id (int) – Identifier of the message.
+
+emoji (str, optional) – Reaction emoji. Pass “” as emoji (default) to retract the reaction.
+
+big (bool, optional) – Pass True to show a bigger and longer reaction. Defaults to False.
+
+Returns:
+bool – On success, True is returned.
+
+Example
+
+# Send a reaction
+await app.send_reaction(chat_id, message_id, "🔥")
+
+# Retract a reaction
+await app.send_reaction(chat_id, message_id)
+Next
+ 
+ 
+Previous
+Pyrogram  Copyright 2017 – 2025,  DanReleased under the GNU LGPL v3.0 license
+     Support Pyrogram
+On this page
+Client.send_reaction()
